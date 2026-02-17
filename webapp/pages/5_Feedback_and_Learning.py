@@ -62,7 +62,7 @@ fig_time.update_layout(
     yaxis2=dict(title=f"Avg LTV30 ({cur['symbol']})", side="right", overlaying="y"),
     height=400,
 )
-st.plotly_chart(fig_time, use_container_width=True)
+st.plotly_chart(fig_time, width='stretch')
 
 # --- Robustness / Stability ---
 st.header("Robustness / Stability Check")
@@ -95,7 +95,7 @@ if "model" in st.session_state and "X_all" in st.session_state:
 
     if country_metrics:
         st.subheader("By Country")
-        st.dataframe(pd.DataFrame(country_metrics), use_container_width=True)
+        st.dataframe(pd.DataFrame(country_metrics), width='stretch')
     st.success("Using live model for stability check.")
 else:
     st.info("Using simulated stability metrics. Train a model for real results.")
@@ -108,7 +108,7 @@ else:
         {"Segment": "MY", "Spearman ρ": 0.78, "Lift@10%": "75.9%", "AUC": 0.82},
     ]
     st.subheader("By Country (Simulated)")
-    st.dataframe(pd.DataFrame(stability_data), use_container_width=True)
+    st.dataframe(pd.DataFrame(stability_data), width='stretch')
 
 # --- Install week stability ---
 st.subheader("By Install Week")
@@ -136,7 +136,7 @@ fig_week.update_layout(
     yaxis2=dict(title=f"Avg LTV30 ({cur['symbol']})", side="right", overlaying="y"),
     height=400,
 )
-st.plotly_chart(fig_week, use_container_width=True)
+st.plotly_chart(fig_week, width='stretch')
 
 # --- Planned A/B Tests ---
 st.header("Planned A/B Tests")
@@ -146,7 +146,7 @@ tests = pd.DataFrame([
     {"Test": "pLTV vs D7-Rev Heuristic", "Hypothesis": "ML model outperforms simple rule", "Status": "🟡 Planned"},
     {"Test": "Country-Specific Models", "Hypothesis": "Local models > global model", "Status": "🔴 Backlog"},
 ])
-st.dataframe(tests, use_container_width=True, hide_index=True)
+st.dataframe(tests, width='stretch', hide_index=True)
 
 # --- Feedback Loop Diagram ---
 st.header("Feedback Loop")

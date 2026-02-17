@@ -79,7 +79,7 @@ for i in range(10):
         "Cumulative %": f"{cum_rev/total_rev*100:.1f}%",
     })
 decile_df = pd.DataFrame(decile_rows)
-st.dataframe(decile_df, use_container_width=True, hide_index=True)
+st.dataframe(decile_df, width='stretch', hide_index=True)
 
 # Gini coefficient
 n = len(ltv_sorted)
@@ -102,7 +102,7 @@ fig_lorenz.update_layout(
     yaxis_title="% of Cumulative Revenue",
     height=400, showlegend=True,
 )
-st.plotly_chart(fig_lorenz, use_container_width=True)
+st.plotly_chart(fig_lorenz, width='stretch')
 
 # =====================================================================
 # LTV Distribution — converted values
@@ -117,7 +117,7 @@ if len(ltv_nonzero) > 0:
         log_y=True, labels={"ltv30_display": f"LTV30 ({cur['symbol']})", "count": "Users"},
     )
     fig.update_layout(showlegend=False)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 else:
     st.info("No payers in dataset.")
 
@@ -141,7 +141,7 @@ fig2 = px.bar(
     labels={"pay_rate": "Paying Rate (%)", "media_source": "Media Source",
             "avg_ltv30_display": f"Avg LTV30 ({cur['symbol']})"},
 )
-st.plotly_chart(fig2, use_container_width=True)
+st.plotly_chart(fig2, width='stretch')
 
 # =====================================================================
 # Whale Economy Analysis
@@ -188,7 +188,7 @@ tier_display = pd.DataFrame({
     "Avg Games D7": tier_stats["avg_games"].values.round(1),
     "Avg Active Days": tier_stats["avg_active_days"].values.round(1),
 })
-st.dataframe(tier_display, use_container_width=True, hide_index=True)
+st.dataframe(tier_display, width='stretch', hide_index=True)
 
 # Tier revenue pie
 col_pie1, col_pie2 = st.columns(2)
@@ -199,7 +199,7 @@ with col_pie1:
         title="Revenue Share by Tier",
         color_discrete_sequence=["#bdc3c7", "#3498db", "#e67e22", "#e74c3c"],
     )
-    st.plotly_chart(fig_pie, use_container_width=True)
+    st.plotly_chart(fig_pie, width='stretch')
 with col_pie2:
     fig_pie2 = px.pie(
         names=tier_order,
@@ -207,7 +207,7 @@ with col_pie2:
         title="User Count by Tier",
         color_discrete_sequence=["#bdc3c7", "#3498db", "#e67e22", "#e74c3c"],
     )
-    st.plotly_chart(fig_pie2, use_container_width=True)
+    st.plotly_chart(fig_pie2, width='stretch')
 
 # Whale media source distribution
 st.subheader("🎯 Where Do Whales Come From?")
@@ -233,7 +233,7 @@ if len(whales) > 0:
         title="Whale Count & Whale Rate by Media Source",
         labels={"whale_count": "Whale Count", "media_source": "Media Source", "whale_rate": "Whale Rate (%)"},
     )
-    st.plotly_chart(fig_ws, use_container_width=True)
+    st.plotly_chart(fig_ws, width='stretch')
 
 # Whale early signals
 st.subheader("🔮 Early Signals: D7 Behavior of Whales vs Others")
@@ -262,4 +262,4 @@ fig_signals.update_layout(
     barmode="group", height=400,
     yaxis_title="% of Max Value",
 )
-st.plotly_chart(fig_signals, use_container_width=True)
+st.plotly_chart(fig_signals, width='stretch')

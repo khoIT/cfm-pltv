@@ -146,7 +146,7 @@ fig_lift.update_layout(
     height=500, legend=dict(orientation="h", y=-0.2),
     title="Lift Curve Comparison: Test 1 (solid) vs Test 2 (dashed)",
 )
-st.plotly_chart(fig_lift, use_container_width=True)
+st.plotly_chart(fig_lift, width='stretch')
 
 st.markdown(
     "> **Solid lines** = Test 1 (Jan 9–13, nearer to training).  \n"
@@ -187,7 +187,7 @@ if "rev_d7" in df_t1.columns:
     metric_rows.append(compute_metrics_for(df_t2["ltv30"].values, df_t2["rev_d7"].fillna(0).values, "rev_d7 — Test 2"))
 
 if metric_rows:
-    st.dataframe(pd.DataFrame(metric_rows), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(metric_rows), width='stretch', hide_index=True)
 
     # Highlight degradation
     if use_live and len(metric_rows) >= 2:
@@ -240,7 +240,7 @@ fig_hist = px.histogram(
     labels={"ltv30_display": f"LTV30 ({cur['symbol']})", "count": "Users"},
     log_y=True,
 )
-st.plotly_chart(fig_hist, use_container_width=True)
+st.plotly_chart(fig_hist, width='stretch')
 
 # =====================================================================
 # Concentration Risk Analysis
@@ -304,7 +304,7 @@ fig_ms = px.bar(
     title=f"Avg LTV30 by Media Source: Test 1 vs Test 2",
     labels={"avg_ltv_display": f"Avg LTV30 ({cur['symbol']})", "media_source": "Media Source"},
 )
-st.plotly_chart(fig_ms, use_container_width=True)
+st.plotly_chart(fig_ms, width='stretch')
 
 # =====================================================================
 # Summary

@@ -157,7 +157,7 @@ for sname, sinfo in strategies.items():
 st.markdown("---")
 st.subheader(f"📋 Top-{top_k_pct}% Seed Selection — Strategy Comparison")
 res_df = pd.DataFrame(results_rows)
-st.dataframe(res_df, use_container_width=True, hide_index=True)
+st.dataframe(res_df, width='stretch', hide_index=True)
 
 # Highlight winner
 if len(res_df) > 1:
@@ -193,7 +193,7 @@ fig_uplift.update_layout(
     xaxis_title="Top-K (%)", yaxis_title=f"Cumulative Revenue ({currency_symbol})",
     height=420, legend=dict(orientation="h", y=-0.15),
 )
-st.plotly_chart(fig_uplift, use_container_width=True)
+st.plotly_chart(fig_uplift, width='stretch')
 
 # ── Treatment Sensitivity (model only) ─────────────────────────────
 st.subheader("Treatment Sensitivity: Marginal Revenue & ROI")
@@ -224,7 +224,7 @@ fig_sens.update_layout(
     yaxis2=dict(title="ROI (%)", side="right", overlaying="y"),
     height=400,
 )
-st.plotly_chart(fig_sens, use_container_width=True)
+st.plotly_chart(fig_sens, width='stretch')
 
 # ── Seed Profile ───────────────────────────────────────────────────
 st.markdown("---")
@@ -235,10 +235,10 @@ model_order_df = df_sim.iloc[np.argsort(-y_pred_model)].head(n_selected)
 col1, col2 = st.columns(2)
 with col1:
     fig_ms = px.pie(model_order_df, names="media_source", title="Media Source (Selected Seeds)")
-    st.plotly_chart(fig_ms, use_container_width=True)
+    st.plotly_chart(fig_ms, width='stretch')
 with col2:
     fig_cc = px.pie(model_order_df, names="first_country_code", title="Country (Selected Seeds)")
-    st.plotly_chart(fig_cc, use_container_width=True)
+    st.plotly_chart(fig_cc, width='stretch')
 
 # ── Educational note ───────────────────────────────────────────────
 st.markdown("---")

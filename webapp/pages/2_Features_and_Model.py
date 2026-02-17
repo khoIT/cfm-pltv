@@ -10,6 +10,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
+from datetime import datetime
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -19,6 +20,7 @@ from shared import (
     FEATURE_GROUPS, ALL_NUMERIC_FEATURES, ALL_CAT_FEATURES, TEST_DATASETS,
     get_selected_features, get_flat_selected_features,
 )
+from model_registry import save_model, load_model, show_model_management_ui
 
 render_sidebar()
 
@@ -57,7 +59,7 @@ profile = profile_df.describe().T
 profile["null_pct"] = (df[available_numeric].isnull().sum() / len(df) * 100).round(1)
 st.dataframe(profile[["null_pct", "mean", "std", "min", "50%", "max"]].rename(
     columns={"null_pct": "Null %", "50%": "Median"}
-), use_container_width=True)
+), width='stretch')
 if cur["code"] == "USD":
     st.caption("💱 Monetary values (rev_d7) shown in USD")
 
@@ -76,7 +78,7 @@ fig_corr = px.bar(
     color=corr_with_ltv.values, color_continuous_scale="RdYlGn",
 )
 fig_corr.update_layout(height=500, yaxis=dict(autorange="reversed"))
-st.plotly_chart(fig_corr, use_container_width=True)
+st.plotly_chart(fig_corr, width='stretch')
 
 # --- Cohort Distributions ---
 with st.expander("📈 Cohort Distributions", expanded=False):
@@ -84,15 +86,15 @@ with st.expander("📈 Cohort Distributions", expanded=False):
     with tab1:
         fig = px.histogram(df, x="media_source", color="is_payer_30",
                            barmode="group", title="User Count by Media Source (Payer vs Non-Payer)")
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
     with tab2:
         fig = px.histogram(df, x="first_country_code", color="is_payer_30",
                            barmode="group", title="User Count by Country")
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
     with tab3:
         fig = px.histogram(df, x="first_os", color="is_payer_30",
                            barmode="group", title="User Count by OS")
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
 
 # =====================================================================
 # SECTION 2 — Model Registry (Feature Selection)
@@ -161,7 +163,6 @@ st.session_state["registry_features"] = selected_features
 # Summary
 num_sel, cat_sel = get_flat_selected_features()
 total_sel = len(num_sel) + len(cat_sel)
-st.markdown("---")
 st.markdown(f"**Selected:** {total_sel} features "
             f"({len(num_sel)} numeric, {len(cat_sel)} categorical)")
 
@@ -172,6 +173,37 @@ if total_sel == 0:
 # SECTION 3 — Model Training
 # =====================================================================
 st.markdown("---")
+
+# Model management UI
+show_model_management_ui()
+# Show loaded model info
+if "loaded_model" in st.session_state:
+    loaded_name = st.session_state.get("loaded_model_name", "Unknown")
+    loaded_metadata = st.session_state.get("loaded_model_metadata", {})
+    
+    st.success(f"✅ **Loaded from disk:** {loaded_name}")
+    
+    col_meta1, col_meta2, col_meta3 = st.columns(3)
+    with col_meta1:
+        st.metric("Features", loaded_metadata.get('n_features', 'N/A'))
+    with col_meta2:
+        st.metric("Dataset Size", f"{loaded_metadata.get('dataset_size', 0):,}")
+    with col_meta3:
+        st.metric("Saved", loaded_metadata.get('training_date', 'N/A'))
+    
+    if st.button("🔄 Use This Model", type="primary"):
+        st.session_state["model"] = st.session_state["loaded_model"]
+        st.session_state["model_features"] = loaded_metadata.get('features', [])
+        st.success("✅ Model activated in session!")
+        st.rerun()
+
+elif "model" in st.session_state:
+    feat_list = st.session_state.get("model_features", [])
+    st.info(f"📦 **Active model** in session — trained with {len(feat_list)} features: "
+            f"`{'`, `'.join(feat_list[:8])}`{'…' if len(feat_list) > 8 else ''}")
+else:
+    st.info("No model in session. Train a model above or load one from disk below.")
+
 st.header("🚀 Train Model")
 
 st.markdown(
@@ -226,14 +258,70 @@ if train_clicked and total_sel > 0:
             st.session_state["model_features"] = num_sel + cat_sel
             st.session_state["df_for_model"] = df
 
-            st.success(f"✅ Model trained with **{total_sel} features** on **{len(X_train):,}** rows.  \n"
-                       f"Navigate to **Evaluation** or **Action** pages to select a test set and compare baselines.")
+            st.success(f"✅ Model trained with **{total_sel} features** on **{len(X_train):,}** rows.")
+            
+            # Store training metadata for saving later
+            st.session_state["last_training_metadata"] = {
+                'model_type': 'XGBoost Regressor',
+                'dataset_size': len(X_train),
+                'n_features': total_sel,
+                'features': num_sel + cat_sel,
+                'numeric_features': num_sel,
+                'categorical_features': cat_sel,
+                'hyperparameters': {
+                    'n_estimators': 200,
+                    'max_depth': 6,
+                    'learning_rate': 0.05,
+                    'objective': 'reg:squaredlogerror'
+                },
+                'training_date': datetime.now().strftime('%Y-%m-%d'),
+                'training_time': datetime.now().strftime('%H:%M:%S'),
+            }
 
         except Exception as e:
             st.error(f"Training failed: {e}")
 
-# Show current model status
+# Save model section (if model exists in session)
 if "model" in st.session_state:
-    feat_list = st.session_state.get("model_features", [])
-    st.info(f"📦 **Active model** in session — trained with {len(feat_list)} features: "
-            f"`{'`, `'.join(feat_list[:8])}`{'…' if len(feat_list) > 8 else ''}")
+    st.markdown("### 💾 Save Current Model")
+    
+    col_save1, col_save2 = st.columns([2, 1])
+    with col_save1:
+        model_name = st.text_input(
+            "Model name:",
+            value=f"pltv_model_{datetime.now().strftime('%Y%m%d_%H%M')}",
+            key="save_model_name"
+        )
+    
+    with col_save2:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("💾 Save to Disk", type="primary", width='stretch'):
+            model = st.session_state["model"]
+            metadata = st.session_state.get("last_training_metadata", {})
+            
+            # Ensure metadata has required fields
+            if not metadata:
+                metadata = {
+                    'model_type': 'XGBoost Regressor',
+                    'dataset_size': len(st.session_state.get("X_all", [])),
+                    'n_features': len(st.session_state.get("model_features", [])),
+                    'features': st.session_state.get("model_features", []),
+                    'training_date': datetime.now().strftime('%Y-%m-%d'),
+                    'training_time': datetime.now().strftime('%H:%M:%S'),
+                }
+            
+            with st.spinner("💾 Saving model..."):
+                success, message = save_model(model, model_name, metadata)
+            
+            if success:
+                st.toast(f"✅ {message}", icon="✅")
+                st.success(f"✅ Model saved as: **{model_name}**")
+                st.balloons()
+            else:
+                st.error(f"❌ Failed to save model")
+                with st.expander("Error details"):
+                    st.code(message)
+    
+    st.markdown("---")
+
+

@@ -94,7 +94,7 @@ for fname in ["cfm_pltv_train.csv", "cfm_pltv_test1.csv", "cfm_pltv_test2.csv"]:
 
 if files_info:
     import pandas as pd
-    st.dataframe(pd.DataFrame(files_info), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(files_info), width=1000, hide_index=True)
 
 # Show metadata if exists
 metadata_path = DATA_DIR / "upload_metadata.txt"

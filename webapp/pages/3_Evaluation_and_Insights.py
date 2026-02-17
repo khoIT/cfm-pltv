@@ -211,7 +211,7 @@ for name, m in all_metrics.items():
         "AUC": round(m["auc"], 3) if m["auc"] is not None else "N/A",
     })
 score_df = pd.DataFrame(scorecard_rows)
-st.dataframe(score_df, use_container_width=True, hide_index=True)
+st.dataframe(score_df, width='stretch', hide_index=True)
 
 # Highlight best
 if len(score_df) > 1:
@@ -244,7 +244,7 @@ fig_lift.update_layout(
     yaxis_title="% Cumulative Revenue Captured",
     height=420, legend=dict(orientation="h", y=-0.15),
 )
-st.plotly_chart(fig_lift, use_container_width=True)
+st.plotly_chart(fig_lift, width='stretch')
 
 # ── Precision@K & Recall@K ─────────────────────────────────────────
 st.subheader("Precision@K & Recall@K")
@@ -265,12 +265,12 @@ with col1:
     fig_pk = px.bar(pd.DataFrame(prec_rows), x="K (%)", y="Precision", color="Strategy",
                     barmode="group", title="Precision@K (high spender = top 10%)",
                     color_discrete_map=color_map)
-    st.plotly_chart(fig_pk, use_container_width=True)
+    st.plotly_chart(fig_pk, width='stretch')
 with col2:
     fig_rk = px.bar(pd.DataFrame(rec_rows), x="K (%)", y="Recall", color="Strategy",
                     barmode="group", title="Recall@K",
                     color_discrete_map=color_map)
-    st.plotly_chart(fig_rk, use_container_width=True)
+    st.plotly_chart(fig_rk, width='stretch')
 
 # ── Calibration Plot (model only) ──────────────────────────────────
 st.subheader("Calibration Plot")
@@ -291,7 +291,7 @@ if m0["cal_pred"] and m0["cal_actual"]:
         yaxis_title=f"Actual LTV30 ({cur['symbol']})",
         height=400,
     )
-    st.plotly_chart(fig_cal, use_container_width=True)
+    st.plotly_chart(fig_cal, width='stretch')
 
 # ── ROC Curve ──────────────────────────────────────────────────────
 any_auc = any(m["auc"] is not None for m in all_metrics.values())
@@ -313,7 +313,7 @@ if any_auc:
         xaxis_title="False Positive Rate", yaxis_title="True Positive Rate",
         height=400, legend=dict(orientation="h", y=-0.15),
     )
-    st.plotly_chart(fig_roc, use_container_width=True)
+    st.plotly_chart(fig_roc, width='stretch')
 
 # ── Educational takeaway ───────────────────────────────────────────
 st.markdown("---")

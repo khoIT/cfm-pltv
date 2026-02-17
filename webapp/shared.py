@@ -180,7 +180,8 @@ def render_sidebar():
         "3. 📊 Evaluation & Insights\n"
         "4. 🎮 Action & Simulation\n"
         "5. 🔄 Feedback & Learning\n"
-        "6. 🔬 Diagnostics"
+        "6. 🔬 Diagnostics\n"
+        "7. 📓 Notebooks"
     )
 
 

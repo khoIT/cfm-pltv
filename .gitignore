@@ -33,7 +33,6 @@ data/*.csv
 
 # Jupyter
 .ipynb_checkpoints/
-*.ipynb
 
 # IDE
 .vscode/
@@ -53,8 +52,7 @@ Thumbs.db
 reports/plots/*.png
 reports/plots/*.html
 
-# Model files
-*.pkl
+# Model files (but keep models/ directory structure)
 *.joblib
 *.h5
 *.pt

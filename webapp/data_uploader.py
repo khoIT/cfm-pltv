@@ -94,7 +94,7 @@ def show_upload_interface():
                 {"Dataset": "Test 1 (OOT Near)", "Rows": f"{n_test1:,}", "Percentage": f"{test1_pct}%"},
                 {"Dataset": "Test 2 (OOT Far)", "Rows": f"{n_test2:,}", "Percentage": f"{test2_pct}%"},
             ])
-            st.dataframe(split_df, use_container_width=True, hide_index=True)
+            st.dataframe(split_df, width='stretch', hide_index=True)
             
             # Split strategy
             st.markdown("---")
@@ -108,7 +108,7 @@ def show_upload_interface():
             
             # Process button
             st.markdown("---")
-            if st.button("🚀 Process & Save Datasets", type="primary", use_container_width=True):
+            if st.button("🚀 Process & Save Datasets", type="primary", width='stretch'):
                 with st.spinner("Processing and saving datasets..."):
                     success = process_and_save(
                         df, train_pct, test1_pct, test2_pct,
