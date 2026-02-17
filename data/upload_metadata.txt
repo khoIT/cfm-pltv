@@ -1,0 +1,10 @@
+upload_timestamp: 2026-02-18T03:19:13.490307
+original_file: user_upload
+total_rows: 1730901
+train_rows: 1038540
+test1_rows: 346180
+test2_rows: 346181
+split_method: time_based
+train_pct: 60
+test1_pct: 20
+test2_pct: 20
