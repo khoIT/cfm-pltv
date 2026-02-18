@@ -91,5 +91,7 @@
   "training_date": "2026-02-18",
   "training_time": "07:21:33",
   "saved_at": "2026-02-18T07:21:41.143412",
-  "model_name": "pltv_model_20260218_0721"
+  "model_name": "pltv_model_20260218_0721_inacc",
+  "renamed_at": "2026-02-18T08:51:35.610626",
+  "previous_name": "pltv_model_20260218_0721"
 }

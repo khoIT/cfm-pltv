@@ -1,0 +1,62 @@
+{
+  "model_type": "XGBoost Regressor",
+  "dataset_size": 1400770,
+  "n_features": 13,
+  "features": [
+    "rev_d7",
+    "txn_cnt_d7",
+    "first_charge_day_offset_d7",
+    "games_d7",
+    "win_rate_d7",
+    "kills_d7",
+    "deaths_d7",
+    "kd_d7",
+    "login_rows_d7",
+    "active_days_d7",
+    "max_level_seen_d7",
+    "max_ladderscore_d7",
+    "media_source"
+  ],
+  "numeric_features": [
+    "rev_d7",
+    "txn_cnt_d7",
+    "first_charge_day_offset_d7",
+    "games_d7",
+    "win_rate_d7",
+    "kills_d7",
+    "deaths_d7",
+    "kd_d7",
+    "login_rows_d7",
+    "active_days_d7",
+    "max_level_seen_d7",
+    "max_ladderscore_d7"
+  ],
+  "categorical_features": [
+    "media_source"
+  ],
+  "feature_importances": {
+    "rev_d7": 0.949443,
+    "max_level_seen_d7": 0.032895,
+    "kd_d7": 0.003934,
+    "active_days_d7": 0.003812,
+    "login_rows_d7": 0.002005,
+    "max_ladderscore_d7": 0.001738,
+    "win_rate_d7": 0.001492,
+    "deaths_d7": 0.001458,
+    "games_d7": 0.001265,
+    "media_source": 0.001014,
+    "kills_d7": 0.000881,
+    "first_charge_day_offset_d7": 3.5e-05,
+    "txn_cnt_d7": 2.7e-05
+  },
+  "hyperparameters": {
+    "n_estimators": 200,
+    "max_depth": 6,
+    "learning_rate": 0.05,
+    "objective": "reg:squaredlogerror"
+  },
+  "training_date": "2026-02-18",
+  "training_time": "11:35:40",
+  "saved_at": "2026-02-18T11:36:10.864663",
+  "model_name": "pltv_model_20260218_1130_full_data"
+}

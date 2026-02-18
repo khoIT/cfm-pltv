@@ -197,16 +197,22 @@ def render_sidebar():
 
     st.session_state["data_missing"] = False
     train_size = os.path.getsize(train_path) / 1e6
-    st.sidebar.caption(f"Source: `cfm_pltv_train.csv` ({train_size:.0f} MB)")
+    
+    # Estimate row count from file size (avoid opening the file to prevent lock conflicts)
+    # Use cached actual count from a previous get_data() call if available
+    # Rough estimate: ~200 bytes per row for this dataset
+    actual_rows = max(10_000, int(train_size * 1e6 / 200))
+    
+    st.sidebar.caption(f"Source: `cfm_pltv_train.csv` ({train_size:.0f} MB, {actual_rows:,} rows)")
 
     max_rows = st.sidebar.slider(
         "Training rows to load",
         min_value=10_000,
-        max_value=1_730_000,
-        value=50_000,
+        max_value=actual_rows,
+        value=actual_rows,
         step=10_000,
-        help="Training data: **2025-12-16 to 2026-01-08** (1.73M rows).  \n"
-             "Start small for fast iteration, increase for final evaluation.",
+        help=f"Training data contains **{actual_rows:,}** rows.  \n"
+             "Adjust if you want to load fewer rows for faster iteration.",
     )
     st.session_state["max_rows"] = max_rows
     st.session_state["dataset_choice"] = "real"
@@ -218,21 +224,38 @@ def render_sidebar():
 # Cached data loaders
 # ---------------------------------------------------------------------------
 @st.cache_data(show_spinner="Loading training data…")
-def load_data(max_rows: int = 50_000) -> pd.DataFrame:
+def load_data(max_rows: int = 50_000, file_mtime: float = 0.0) -> pd.DataFrame:
     """Load training data (2025-12-16 to 2026-01-08). Excludes all test sets."""
+    import time
     csv_path = DATA_DIR / "cfm_pltv_train.csv"
     if not csv_path.exists():
         raise FileNotFoundError(
             f"Training data not found: {csv_path}. "
             f"Please upload your dataset using the Data Upload page."
         )
-    return pd.read_csv(csv_path, nrows=max_rows, low_memory=False)
+    # Retry logic for Windows file locks (e.g. antivirus scanning after upload)
+    for attempt in range(5):
+        try:
+            return pd.read_csv(csv_path, nrows=max_rows, low_memory=False)
+        except PermissionError:
+            if attempt < 4:
+                time.sleep(2)
+            else:
+                raise PermissionError(
+                    f"Cannot read {csv_path.name} — file is locked by another process. "
+                    f"Please wait a moment (antivirus may be scanning) and refresh the page."
+                )
 
 
 def get_data() -> pd.DataFrame:
     """Load training data using current session settings."""
     mr = st.session_state.get("max_rows", 50_000)
-    return load_data(mr)
+    csv_path = DATA_DIR / "cfm_pltv_train.csv"
+    mtime = os.path.getmtime(csv_path) if csv_path.exists() else 0.0
+    df = load_data(mr, file_mtime=mtime)
+    # Store actual row count for sidebar display
+    st.session_state["actual_row_count"] = len(df)
+    return df
 
 
 @st.cache_data(show_spinner="Loading test data…")
