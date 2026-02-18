@@ -1,10 +1,8 @@
 """
 CFM Decision Intelligence — Streamlit App Entry Point
-Showcases the Decision-Centric Intelligence Loop for pLTV / UA Seed Optimization.
+Redirects to Decision Definition page by default.
 """
 import streamlit as st
-from pathlib import Path
-import sys
 
 st.set_page_config(
     page_title="CFM Decision Intelligence",
@@ -13,11 +11,8 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Make shared importable
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from shared import render_sidebar, get_data, REPORTS_DIR
-
-render_sidebar()
+# Redirect to Decision Definition page
+st.switch_page("pages/1_Decision_Definition.py")
 
 
 def read_md(filename: str) -> str:

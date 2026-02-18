@@ -1,6 +1,6 @@
 {
   "model_type": "XGBoost Regressor",
-  "dataset_size": 50000,
+  "dataset_size": 370000,
   "n_features": 24,
   "features": [
     "rev_d7",
@@ -56,6 +56,32 @@
     "first_os",
     "first_login_channel"
   ],
+  "feature_importances": {
+    "rev_d7": 0.953121,
+    "max_level_seen_d7": 0.031107,
+    "network_variety_d7": 0.005491,
+    "active_days_d7": 0.003116,
+    "login_rows_d7": 0.001754,
+    "max_ladderscore_d7": 0.00163,
+    "first_login_channel": 0.001582,
+    "media_source": 0.001209,
+    "first_os": 0.00087,
+    "first_charge_day_offset_d7": 7.6e-05,
+    "txn_cnt_d7": 4.4e-05,
+    "kills_d7": 0.0,
+    "games_d7": 0.0,
+    "avg_score_d7": 0.0,
+    "avg_game_duration_d7": 0.0,
+    "win_rate_d7": 0.0,
+    "loginchannel_variety_d7": 0.0,
+    "max_ladderlevel_d7": 0.0,
+    "kd_d7": 0.0,
+    "max_level_game_d7": 0.0,
+    "assists_d7": 0.0,
+    "deaths_d7": 0.0,
+    "clientversion_variety_d7": 0.0,
+    "first_country_code": 0.0
+  },
   "hyperparameters": {
     "n_estimators": 200,
     "max_depth": 6,
@@ -63,7 +89,7 @@
     "objective": "reg:squaredlogerror"
   },
   "training_date": "2026-02-18",
-  "training_time": "04:38:55",
-  "saved_at": "2026-02-18T04:38:57.707651",
-  "model_name": "pltv_model_20260218_0438"
+  "training_time": "07:21:33",
+  "saved_at": "2026-02-18T07:21:41.143412",
+  "model_name": "pltv_model_20260218_0721"
 }

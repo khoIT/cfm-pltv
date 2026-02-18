@@ -239,28 +239,51 @@ def show_model_management_ui():
     # Display models in expandable sections
     for idx, model_info in enumerate(models):
         with st.expander(f"📦 {model_info['name']}", expanded=(idx == 0)):
-            col1, col2 = st.columns([3, 1])
+            st.markdown(f"**Type:** {model_info['model_type']}")
+            st.markdown(f"**Saved:** {model_info['saved_at'][:19].replace('T', ' ')}")
+            st.markdown(f"**Dataset Size:** {model_info['dataset_size']:,} rows")
+            st.markdown(f"**Features:** {model_info['n_features']}")
+            st.markdown(f"**File Size:** {model_info['size_mb']:.2f} MB")
             
-            with col1:
-                st.markdown(f"**Type:** {model_info['model_type']}")
-                st.markdown(f"**Saved:** {model_info['saved_at'][:19].replace('T', ' ')}")
-                st.markdown(f"**Dataset Size:** {model_info['dataset_size']:,} rows")
-                st.markdown(f"**Features:** {model_info['n_features']}")
-                st.markdown(f"**File Size:** {model_info['size_mb']:.2f} MB")
-                
-                # Display metrics if available
-                metrics = model_info.get('metrics', {})
-                if metrics:
-                    st.markdown("**Metrics:**")
-                    for metric_name, metric_value in metrics.items():
-                        if isinstance(metric_value, float):
-                            st.markdown(f"  - {metric_name}: {metric_value:.4f}")
-                        else:
-                            st.markdown(f"  - {metric_name}: {metric_value}")
+            # Display metrics if available
+            metrics = model_info.get('metrics', {})
+            if metrics:
+                st.markdown("**Metrics:**")
+                for metric_name, metric_value in metrics.items():
+                    if isinstance(metric_value, float):
+                        st.markdown(f"  - {metric_name}: {metric_value:.4f}")
+                    else:
+                        st.markdown(f"  - {metric_name}: {metric_value}")
             
-            with col2:
-                # Load button
-                if st.button(f"📥 Load", key=f"load_{model_info['name']}", width='stretch'):
+            # Show feature importance chart + top 5 drivers side-by-side
+            feat_imp = model_info['metadata'].get('feature_importances', {})
+            if feat_imp:
+                import plotly.express as px_reg
+                sorted_imp = sorted(feat_imp.items(), key=lambda x: x[1], reverse=True)
+                top15 = sorted_imp[:15]
+                fig_imp = px_reg.bar(
+                    x=[v for _, v in top15], y=[k for k, _ in top15], orientation="h",
+                    title="Feature Importances (top 15)",
+                    labels={"x": "Importance", "y": "Feature"},
+                    color=[v for _, v in top15], color_continuous_scale="Tealgrn",
+                )
+                fig_imp.update_layout(yaxis=dict(autorange="reversed"), height=350)
+
+                reg_chart_col, reg_drv_col = st.columns([1.4, 1])
+                with reg_chart_col:
+                    st.plotly_chart(fig_imp, use_container_width=True)
+                with reg_drv_col:
+                    st.markdown("**🏆 Top 5 pLTV Drivers:**")
+                    drv_col1, drv_col2 = st.columns(2)
+                    for i, (feat, imp_val) in enumerate(sorted_imp[:5]):
+                        with drv_col1 if i % 2 == 0 else drv_col2:
+                            st.metric(feat, f"{imp_val:.4f}")
+            
+            # Action buttons in a single row
+            st.markdown("---")
+            btn_col1, btn_col2, btn_col3 = st.columns(3)
+            with btn_col1:
+                if st.button(f"📥 Load", key=f"load_{model_info['name']}", use_container_width=True):
                     model, metadata = load_model(model_info['name'])
                     if model is not None:
                         st.session_state['loaded_model'] = model
@@ -268,13 +291,11 @@ def show_model_management_ui():
                         st.session_state['loaded_model_metadata'] = metadata
                         st.success(f"✅ Loaded model: {model_info['name']}")
                         st.rerun()
-                
-                # Rename button
-                if st.button(f"✏️ Rename", key=f"rename_{model_info['name']}", width='stretch'):
+            with btn_col2:
+                if st.button(f"✏️ Rename", key=f"rename_{model_info['name']}", use_container_width=True):
                     st.session_state[f'renaming_{model_info["name"]}'] = True
-                
-                # Delete button
-                if st.button(f"🗑️ Delete", key=f"delete_{model_info['name']}", width='stretch'):
+            with btn_col3:
+                if st.button(f"🗑️ Delete", key=f"delete_{model_info['name']}", use_container_width=True):
                     st.session_state[f'confirm_delete_{model_info["name"]}'] = True
             
             # Rename input

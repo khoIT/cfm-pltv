@@ -15,15 +15,16 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shared import (
-    render_sidebar, get_data, load_test_1, load_test_2, convert_vnd,
+    render_sidebar, render_top_menu, get_data, load_test_1, load_test_2, convert_vnd,
     get_currency_info, format_currency, REPORTS_DIR,
     BASELINE_HEURISTICS, compute_baseline_ranking,
     ALL_NUMERIC_FEATURES, ALL_CAT_FEATURES,
 )
 
+render_top_menu()
 render_sidebar()
 
-st.title("🔬 Diagnostics — Model Stability & Concentration Risk")
+st.title("🔬 Diagnostics")
 st.markdown("---")
 
 if st.session_state.get("data_missing", False):
@@ -239,8 +240,41 @@ fig_hist = px.histogram(
     title="LTV30 Distribution (Payers Only) — Test 1 vs Test 2",
     labels={"ltv30_display": f"LTV30 ({cur['symbol']})", "count": "Users"},
     log_y=True,
+    height=420,
 )
-st.plotly_chart(fig_hist, width='stretch')
+
+# ── Media Source Stability (compute early for side-by-side) ──────────
+ms_t1 = df_t1.groupby("media_source").agg(
+    users=("vopenid", "count"),
+    avg_ltv=("ltv30", "mean"),
+    payer_rate=("is_payer_30", "mean"),
+).reset_index()
+ms_t1["period"] = "Test 1"
+ms_t1["avg_ltv_display"] = convert_vnd(ms_t1["avg_ltv"], cur["code"])
+
+ms_t2 = df_t2.groupby("media_source").agg(
+    users=("vopenid", "count"),
+    avg_ltv=("ltv30", "mean"),
+    payer_rate=("is_payer_30", "mean"),
+).reset_index()
+ms_t2["period"] = "Test 2"
+ms_t2["avg_ltv_display"] = convert_vnd(ms_t2["avg_ltv"], cur["code"])
+
+ms_combined = pd.concat([ms_t1, ms_t2])
+fig_ms = px.bar(
+    ms_combined, x="media_source", y="avg_ltv_display", color="period",
+    barmode="group",
+    title=f"Avg LTV30 by Media Source: Test 1 vs Test 2",
+    labels={"avg_ltv_display": f"Avg LTV30 ({cur['symbol']})", "media_source": "Media Source"},
+    height=420,
+)
+
+# Display side-by-side
+col_hist, col_ms = st.columns(2)
+with col_hist:
+    st.plotly_chart(fig_hist, use_container_width=True)
+with col_ms:
+    st.plotly_chart(fig_ms, use_container_width=True)
 
 # =====================================================================
 # Concentration Risk Analysis
@@ -273,38 +307,6 @@ for label, df_test in [("Test 1", df_t1), ("Test 2", df_t2)]:
     c2.metric("Top 5% Rev Share", f"{top_5:.1f}%")
     c3.metric("Top 10% Rev Share", f"{top_10:.1f}%")
     c4.metric("Gini Coefficient", f"{gini:.3f}")
-
-# =====================================================================
-# Media Source Stability
-# =====================================================================
-st.markdown("---")
-st.header("📡 Media Source Stability")
-st.markdown("> Is the mix of whale-producing media sources consistent across periods?")
-
-ms_t1 = df_t1.groupby("media_source").agg(
-    users=("vopenid", "count"),
-    avg_ltv=("ltv30", "mean"),
-    payer_rate=("is_payer_30", "mean"),
-).reset_index()
-ms_t1["period"] = "Test 1"
-ms_t1["avg_ltv_display"] = convert_vnd(ms_t1["avg_ltv"], cur["code"])
-
-ms_t2 = df_t2.groupby("media_source").agg(
-    users=("vopenid", "count"),
-    avg_ltv=("ltv30", "mean"),
-    payer_rate=("is_payer_30", "mean"),
-).reset_index()
-ms_t2["period"] = "Test 2"
-ms_t2["avg_ltv_display"] = convert_vnd(ms_t2["avg_ltv"], cur["code"])
-
-ms_combined = pd.concat([ms_t1, ms_t2])
-fig_ms = px.bar(
-    ms_combined, x="media_source", y="avg_ltv_display", color="period",
-    barmode="group",
-    title=f"Avg LTV30 by Media Source: Test 1 vs Test 2",
-    labels={"avg_ltv_display": f"Avg LTV30 ({cur['symbol']})", "media_source": "Media Source"},
-)
-st.plotly_chart(fig_ms, width='stretch')
 
 # =====================================================================
 # Summary

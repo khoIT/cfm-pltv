@@ -126,23 +126,64 @@ TEST_DATASETS = {
 
 
 # ---------------------------------------------------------------------------
+# Top Menu (called from every page)
+# ---------------------------------------------------------------------------
+def render_top_menu():
+    """Render horizontal top menu with title, currency, and framework navigation."""
+    # Custom CSS: wider layout + hide default sidebar nav (we use custom page_link)
+    st.markdown("""
+        <style>
+        .main .block-container,
+        [data-testid="stMainBlockContainer"] {
+            max-width: 80% !important;
+            width: 100% !important;
+            padding-left: 1rem !important;
+            padding-right: 1rem !important;
+        }
+        [data-testid="stSidebarNav"] {
+            display: none;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    # Create top bar with title, currency, and navigation
+    col1, col2, col3 = st.columns([4, 1, 1])
+    
+    with col1:
+        st.markdown("### 🔥 CrossFire Decision Intelligence")
+    
+    with col2:
+        st.markdown("")
+    
+    with col3:
+        currency = st.selectbox(
+            "💱",
+            ["🇻🇳 VND (₫)", "💵 USD ($)"],
+            index=0,
+            label_visibility="collapsed",
+            help=f"Currency: VND ↔ USD (1 USD ≈ ₫{VND_TO_USD_RATE:,.0f})"
+        )
+        st.session_state["currency"] = "VND" if "VND" in currency else "USD"
+    
+# ---------------------------------------------------------------------------
 # Sidebar (called from every page)
 # ---------------------------------------------------------------------------
 def render_sidebar():
-    """Render the shared sidebar controls: training row limit, currency toggle, info."""
-    st.sidebar.title("🎯 CFM Decision Intelligence")
-
-    # Currency toggle at the top
-    st.sidebar.markdown("### 💱 Currency Display")
-    currency = st.sidebar.radio(
-        "Show values in:",
-        ["VND (₫)", "USD ($)"],
-        index=0,
-        horizontal=True,
-        help=f"Toggle between Vietnamese Dong and US Dollar.  \n"
-             f"Conversion rate: 1 USD ≈ ₫{VND_TO_USD_RATE:,.0f}",
-    )
-    st.session_state["currency"] = "VND" if "VND" in currency else "USD"
+    """Render the shared sidebar controls: custom navigation with emojis, training data config."""
+    # Custom sidebar navigation with emojis
+    st.sidebar.markdown("### 🔥 Navigation")
+    sidebar_pages = [
+        ("📤 Data Upload", "pages/0_Data_Upload.py"),
+        ("🎯 Decision Definition", "pages/1_Decision_Definition.py"),
+        ("⚔️ Features and Model", "pages/2_Features_and_Model.py"),
+        ("📊 Evaluation and Insights", "pages/3_Evaluation_and_Insights.py"),
+        ("🎮 Action and Simulation", "pages/4_Action_and_Simulation.py"),
+        ("🔄 Feedback and Learning", "pages/5_Feedback_and_Learning.py"),
+        ("🔬 Diagnostics", "pages/6_Diagnostics.py"),
+        ("📓 Notebooks", "pages/7_Notebooks.py"),
+    ]
+    for label, page_path in sidebar_pages:
+        st.sidebar.page_link(page_path, label=label)
     
     st.sidebar.markdown("---")
     st.sidebar.markdown("### ⚙️ Training Data")
@@ -171,18 +212,6 @@ def render_sidebar():
     st.session_state["dataset_choice"] = "real"
 
     st.sidebar.caption(f"📊 Loading up to **{max_rows:,}** training rows")
-
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### 📑 Framework Layers")
-    st.sidebar.markdown(
-        "1. 📋 Decision Definition\n"
-        "2. 🔧 Features & Model\n"
-        "3. 📊 Evaluation & Insights\n"
-        "4. 🎮 Action & Simulation\n"
-        "5. 🔄 Feedback & Learning\n"
-        "6. 🔬 Diagnostics\n"
-        "7. 📓 Notebooks"
-    )
 
 
 # ---------------------------------------------------------------------------

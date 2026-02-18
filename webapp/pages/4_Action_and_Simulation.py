@@ -13,14 +13,15 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shared import (
-    render_sidebar, get_data, get_test_data, format_currency, convert_vnd,
+    render_sidebar, render_top_menu, get_data, get_test_data, format_currency, convert_vnd,
     get_currency_info, REPORTS_DIR,
     BASELINE_HEURISTICS, compute_baseline_ranking, TEST_DATASETS,
 )
 
+render_top_menu()
 render_sidebar()
 
-st.title("🎮 Layer 4 — Action & Simulation")
+st.title("🎮 Action & Simulation")
 
 if st.session_state.get("data_missing", False):
     st.warning("⚠️ No training data found")
@@ -29,7 +30,6 @@ if st.session_state.get("data_missing", False):
 
 df = get_data()
 st.caption(f"Training data: **{len(df):,}** rows")
-st.markdown("---")
 
 report_path = REPORTS_DIR / "action_simulation.md"
 if report_path.exists():
@@ -86,11 +86,7 @@ else:
     st.info("⬅️ Using demo predictions. Train a model on the **Features & Model** page for real results.")
 
 # ── Simulation Controls ───────────────────────────────────────────
-st.header("🎯 Top-K Seed Selection Simulator")
-st.markdown(
-    "Choose the **Top-K %** of users to include in your UA seed list.  \n"
-    "The simulator estimates **revenue captured** and **ROI** for each ranking strategy."
-)
+st.header("🎯 UA Budget Simulation — pLTV Impact")
 
 cur = get_currency_info()
 currency = cur["code"]
@@ -99,111 +95,158 @@ cpi_default = 10000.0 if currency == "VND" else 0.42
 cpi_min = 1000.0 if currency == "VND" else 0.01
 cpi_step = 1000.0 if currency == "VND" else 0.05
 
-col1, col2 = st.columns(2)
-with col1:
-    top_k_pct = st.slider("Top-K % of users to select", 1, 50, 10, 1)
-with col2:
-    cpi = st.number_input(f"Assumed CPI ({currency_symbol})", value=cpi_default, min_value=cpi_min, step=cpi_step)
+# ── Controls + Strategy toggles ───────────────────────────────────
+ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([2, 1.5, 2])
+with ctrl_col1:
+    top_k_pct = st.slider("Top-K %", 1, 20, 5, 1, help="Realistic UA seed range: 1–10%")
+with ctrl_col2:
+    cpi = st.number_input(f"CPI ({currency_symbol})", value=cpi_default, min_value=cpi_min, step=cpi_step)
+with ctrl_col3:
+    # Build strategies dict — toggles in 2 columns
+    strategies = {model_name: {"scores": y_pred_model, "color": "#FF6600"}}
+    bl_items = list(BASELINE_HEURISTICS.items())
+    bl_col1, bl_col2 = st.columns(2)
+    for i, (name, info) in enumerate(bl_items):
+        with bl_col1 if i % 2 == 0 else bl_col2:
+            on = st.toggle(
+                name.split(" (")[0],
+                value=(name == "rev_d7 (D7 Revenue)"),
+                key=f"act_bl_{name}",
+                help=info["description"],
+            )
+            if on:
+                strategies[name] = {
+                    "scores": compute_baseline_ranking(df_sim, info["column"]),
+                    "color": info["color"],
+                }
 
-# ── Strategy selector (model + baselines) ─────────────────────────
-st.markdown("---")
-st.subheader("🔀 Select Strategies to Compare")
-st.markdown("Toggle strategies ON/OFF. Each row below shows what happens if you use that strategy to pick your Top-K seeds.")
-
-# Build strategies dict: name -> (scores, color)
-strategies = {model_name: {"scores": y_pred_model, "color": "royalblue"}}
-
-cols = st.columns(len(BASELINE_HEURISTICS))
-for i, (name, info) in enumerate(BASELINE_HEURISTICS.items()):
-    with cols[i]:
-        on = st.toggle(
-            name.split(" (")[0],
-            value=(name == "rev_d7 (D7 Revenue)"),
-            key=f"act_bl_{name}",
-            help=info["description"],
-        )
-        if on:
-            strategies[name] = {
-                "scores": compute_baseline_ranking(df_sim, info["column"]),
-                "color": info["color"],
-            }
-
-# Always include random
+# Always include random as reference
 strategies["Random"] = {"scores": np.random.default_rng(42).permutation(len(df_sim)).astype(float), "color": "lightgray"}
 
-# ── Compute Top-K results for each strategy ────────────────────────
+# ── Compute results ────────────────────────────────────────────────
 n_selected = max(1, int(len(df_sim) * top_k_pct / 100))
 ltv_vals = df_sim["ltv30"].values
 total_rev = ltv_vals.sum()
 
-results_rows = []
-for sname, sinfo in strategies.items():
-    order = np.argsort(-sinfo["scores"])
-    top_k_idx = order[:n_selected]
-    rev_captured = ltv_vals[top_k_idx].sum()
-    cost = n_selected * cpi
-    roi = (rev_captured - cost) / cost * 100 if cost > 0 else 0
-    pct_captured = rev_captured / total_rev * 100 if total_rev > 0 else 0
-    results_rows.append({
-        "Strategy": sname,
-        "Users": n_selected,
-        f"Revenue Captured ({currency_symbol})": round(rev_captured if currency == "VND" else rev_captured / 24000, 2 if currency == "USD" else 0),
-        "% of Total Revenue": f"{pct_captured:.1f}%",
-        f"Cost ({currency_symbol})": round(cost if currency == "VND" else cost / 24000, 2 if currency == "USD" else 0),
-        "ROI (%)": round(roi, 0),
-    })
-
-# ── Results Table ──────────────────────────────────────────────────
-st.markdown("---")
-st.subheader(f"📋 Top-{top_k_pct}% Seed Selection — Strategy Comparison")
-res_df = pd.DataFrame(results_rows)
-st.dataframe(res_df, width='stretch', hide_index=True)
-
-# Highlight winner
-if len(res_df) > 1:
-    rev_col = f"Revenue Captured ({currency_symbol})"
-    best = res_df.loc[res_df[rev_col].idxmax(), "Strategy"]
-    worst = res_df.loc[res_df[rev_col].idxmin(), "Strategy"]
-    best_rev = res_df.loc[res_df[rev_col].idxmax(), rev_col]
-    worst_rev = res_df.loc[res_df[rev_col].idxmin(), rev_col]
-    delta = best_rev - worst_rev
-    delta_str = f"{currency_symbol}{delta:,.2f}" if currency == "USD" else f"{currency_symbol}{delta:,.0f}"
-    st.markdown(f"**Best:** `{best}` captures **{delta_str} more** revenue than `{worst}` at Top-{top_k_pct}%.")
-
-# ── Uplift Curve — all strategies ──────────────────────────────────
-st.markdown("---")
-st.subheader("Uplift Curve: Revenue by Top-K %")
-st.markdown("> Cumulative actual revenue captured as you expand the seed list from 1% to 50% for each strategy.")
-
-k_range = list(range(1, 51))
-fig_uplift = go.Figure()
-
-for sname, sinfo in strategies.items():
-    order = np.argsort(-sinfo["scores"])
-    revs = []
-    for k in k_range:
-        n = max(1, int(len(df_sim) * k / 100))
-        revs.append(float(convert_vnd(ltv_vals[order[:n]].sum(), currency)))
-    fig_uplift.add_trace(go.Scatter(
-        x=k_range, y=revs, name=sname,
-        line=dict(color=sinfo["color"], width=2, dash="dash" if sname == "Random" else "solid"),
-    ))
-
-fig_uplift.update_layout(
-    xaxis_title="Top-K (%)", yaxis_title=f"Cumulative Revenue ({currency_symbol})",
-    height=420, legend=dict(orientation="h", y=-0.15),
-)
-st.plotly_chart(fig_uplift, width='stretch')
-
-# ── Treatment Sensitivity (model only) ─────────────────────────────
-st.subheader("Treatment Sensitivity: Marginal Revenue & ROI")
-st.markdown("> How does each additional 1% of users contribute to revenue? "
-            "Steep drop = diminishing returns = you've found the sweet spot.")
-
+# Model results (for KPI cards)
 model_order = np.argsort(-y_pred_model)
+model_top_k_idx = model_order[:n_selected]
+model_rev_captured = ltv_vals[model_top_k_idx].sum()
+model_pct_captured = model_rev_captured / total_rev * 100 if total_rev > 0 else 0
+model_cost = n_selected * cpi
+model_roi = (model_rev_captured - model_cost) / model_cost * 100 if model_cost > 0 else 0
+
+# Random baseline for ROI comparison
+random_order = np.random.default_rng(42).permutation(len(df_sim))
+random_rev = ltv_vals[random_order[:n_selected]].sum()
+random_pct = random_rev / total_rev * 100 if total_rev > 0 else 0
+roi_vs_random = model_pct_captured - random_pct
+
+# ── KPI Cards ──────────────────────────────────────────────────────
+kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+with kpi1:
+    st.metric("🎯 Selected Users", f"{n_selected:,}", help=f"Top {top_k_pct}% of {len(df_sim):,}")
+with kpi2:
+    st.metric("💰 Predicted Revenue Share", f"{model_pct_captured:.1f}%",
+              delta=f"+{roi_vs_random:.1f}% vs random", help=f"Revenue captured by {model_name}")
+with kpi3:
+    st.metric(f"📈 ROI ({model_name})", f"{model_roi:,.0f}%",
+              help=f"(Revenue − Cost) / Cost at CPI={currency_symbol}{cpi:,.0f}")
+with kpi4:
+    st.metric(f"💵 Revenue ({currency_symbol})", format_currency(model_rev_captured, currency),
+              help="Total predicted D30 revenue from selected seeds")
+
+# ── Cumulative LTV Chart + Strategy Table (side-by-side) ──────────
+chart_col, table_col = st.columns([1.4, 1])
+
+with chart_col:
+    k_range = list(range(1, 11))  # 1–10% realistic range
+    
+    fig_area = go.Figure()
+    for sname, sinfo in strategies.items():
+        order = np.argsort(-sinfo["scores"])
+        revs_pct = []
+        for k in k_range:
+            n = max(1, int(len(df_sim) * k / 100))
+            rev_k = ltv_vals[order[:n]].sum()
+            revs_pct.append(rev_k / total_rev * 100 if total_rev > 0 else 0)
+    
+        is_model = sname == model_name
+        fig_area.add_trace(go.Scatter(
+            x=k_range, y=revs_pct, name=sname,
+            fill='tozeroy' if is_model else None,
+            line=dict(
+                color=sinfo["color"], width=3 if is_model else 2,
+                dash="solid" if sname != "Random" else "dash",
+            ),
+            fillcolor="rgba(255,102,0,0.15)" if is_model else None,
+        ))
+    
+    # Add vertical marker at selected Top-K
+    fig_area.add_vline(x=top_k_pct, line_dash="dot", line_color="#FF6600", line_width=2,
+                       annotation_text=f"Top {top_k_pct}%", annotation_position="top right")
+    
+    fig_area.update_layout(
+        title="Cumulative Revenue Share by Seed Size",
+        xaxis_title="Top-K % of Users", yaxis_title="% of Total Revenue Captured",
+        xaxis=dict(dtick=1, range=[0.5, 10.5]),
+        yaxis=dict(ticksuffix="%"),
+        height=500, legend=dict(orientation="h", y=-0.15),
+        hovermode="x unified",
+    )
+    st.plotly_chart(fig_area, use_container_width=True)
+
+with table_col:
+    st.markdown(f"#### 📋 Strategy Comparison @ Top-{top_k_pct}%")
+    
+    results_rows = []
+    for sname, sinfo in strategies.items():
+        order = np.argsort(-sinfo["scores"])
+        top_k_idx = order[:n_selected]
+        rev_captured = ltv_vals[top_k_idx].sum()
+        cost = n_selected * cpi
+        roi = (rev_captured - cost) / cost * 100 if cost > 0 else 0
+        pct_captured = rev_captured / total_rev * 100 if total_rev > 0 else 0
+        results_rows.append({
+            "Strategy": sname,
+            "Revenue Share": f"{pct_captured:.1f}%",
+            "ROI": f"{roi:,.0f}%",
+        })
+    
+    res_df = pd.DataFrame(results_rows)
+    st.dataframe(res_df, use_container_width=True, hide_index=True, height=420)
+
+# ── Insight Line ───────────────────────────────────────────────────
+# Find sweet spot: K% where marginal gain drops below 50% of average
+model_revs_pct = []
+for k in k_range:
+    n = max(1, int(len(df_sim) * k / 100))
+    model_revs_pct.append(ltv_vals[model_order[:n]].sum() / total_rev * 100)
+
+sweet_spot_k = top_k_pct
+best_marginal = 0
+for k_idx in range(1, len(k_range)):
+    marginal = model_revs_pct[k_idx] - model_revs_pct[k_idx - 1]
+    if k_idx == 1:
+        best_marginal = marginal
+    elif marginal < best_marginal * 0.4:
+        sweet_spot_k = k_range[k_idx - 1]
+        break
+
+st.info(
+    f"💡 **Top {top_k_pct}% → ≈ {model_pct_captured:.0f}% revenue share** — "
+    f"{'seed optimization sweet spot!' if top_k_pct <= sweet_spot_k else f'consider narrowing to Top {sweet_spot_k}% for better ROI.'}"
+)
+
+# ── Treatment Sensitivity ─────────────────────────────────────────
+st.markdown("---")
+st.subheader("Marginal Revenue & ROI by Seed Size")
+st.markdown("> When the bars flatten, you've hit diminishing returns.")
+
+k_range_full = list(range(1, 11))
 rois, marginals = [], []
 prev_rev = 0
-for k in k_range:
+for k in k_range_full:
     n = max(1, int(len(df_sim) * k / 100))
     rev = ltv_vals[model_order[:n]].sum()
     cost_k = n * cpi
@@ -213,24 +256,26 @@ for k in k_range:
 
 fig_sens = go.Figure()
 fig_sens.add_trace(go.Bar(
-    x=k_range, y=marginals, name=f"Marginal Revenue ({currency_symbol})", marker_color="lightblue",
+    x=k_range_full, y=marginals, name=f"Marginal Revenue ({currency_symbol})",
+    marker_color="#FF6600", opacity=0.7,
 ))
 fig_sens.add_trace(go.Scatter(
-    x=k_range, y=rois, name="Cumulative ROI (%)", line=dict(color="red", width=2), yaxis="y2",
+    x=k_range_full, y=rois, name="Cumulative ROI (%)",
+    line=dict(color="#E74C3C", width=3), yaxis="y2",
 ))
 fig_sens.update_layout(
-    xaxis_title="Top-K (%)",
+    xaxis_title="Top-K (%)", xaxis=dict(dtick=1),
     yaxis=dict(title=f"Marginal Revenue ({currency_symbol})", side="left"),
     yaxis2=dict(title="ROI (%)", side="right", overlaying="y"),
-    height=400,
+    height=380,
 )
 st.plotly_chart(fig_sens, width='stretch')
 
 # ── Seed Profile ───────────────────────────────────────────────────
 st.markdown("---")
-st.subheader(f"👥 Selected Seed Profile (Top-{top_k_pct}% by {model_name})")
+st.subheader(f"👥 Seed Profile (Top-{top_k_pct}% by {model_name})")
 
-model_order_df = df_sim.iloc[np.argsort(-y_pred_model)].head(n_selected)
+model_order_df = df_sim.iloc[model_order].head(n_selected)
 
 col1, col2 = st.columns(2)
 with col1:
@@ -239,13 +284,3 @@ with col1:
 with col2:
     fig_cc = px.pie(model_order_df, names="first_country_code", title="Country (Selected Seeds)")
     st.plotly_chart(fig_cc, width='stretch')
-
-# ── Educational note ───────────────────────────────────────────────
-st.markdown("---")
-st.markdown("### 💡 How to Use This")
-st.markdown(
-    "1. **Pick your Top-K %** — start at 5–10% for concentrated, high-quality seeds.  \n"
-    "2. **Compare strategies** — if `rev_d7` alone is 90% as good as XGBoost, the model adds marginal value.  \n"
-    "3. **Check the marginal revenue chart** — when the bars flatten, you've hit diminishing returns.  \n"
-    "4. **Export the seed list** — feed the Top-K user IDs to your ad network for lookalike targeting."
-)

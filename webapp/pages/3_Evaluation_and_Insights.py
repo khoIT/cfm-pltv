@@ -15,11 +15,12 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shared import (
-    render_sidebar, get_data, get_test_data, convert_vnd, get_currency_info,
+    render_sidebar, render_top_menu, get_data, get_test_data, convert_vnd, get_currency_info,
     format_currency, REPORTS_DIR,
     BASELINE_HEURISTICS, compute_baseline_ranking, TEST_DATASETS,
 )
 
+render_top_menu()
 render_sidebar()
 
 # ── helpers ────────────────────────────────────────────────────────
@@ -88,7 +89,7 @@ def compute_eval_metrics(y_true, y_pred, label="Model"):
 
 
 # ── page ───────────────────────────────────────────────────────────
-st.title("📊 Layer 3 — Evaluation & Insights")
+st.title("📊 Evaluation & Insights")
 
 if st.session_state.get("data_missing", False):
     st.warning("⚠️ No training data found")
@@ -98,7 +99,6 @@ if st.session_state.get("data_missing", False):
 df = get_data()
 cur = get_currency_info()
 st.caption(f"Training data: **{len(df):,}** rows")
-st.markdown("---")
 
 report_path = REPORTS_DIR / "evaluation_metrics.md"
 if report_path.exists():
@@ -195,9 +195,14 @@ all_metrics[model_label] = compute_eval_metrics(y_true, y_pred_model, label=mode
 for bl_name, bl_info in active_baselines.items():
     all_metrics[bl_name] = compute_eval_metrics(y_true, bl_info["scores"], label=bl_name)
 
-# ── Scorecard ─────────────────────────────────────────────────────
+# ── Colors ─────────────────────────────────────────────────────────
+strategy_colors = {"royalblue": model_label}
+color_map = {model_label: "royalblue"}
+for bl_name, bl_info in active_baselines.items():
+    color_map[bl_name] = bl_info["color"]
+
+# ── Scorecard + Lift Curve (side-by-side) ─────────────────────────
 st.markdown("---")
-st.subheader("📋 Scorecard")
 
 scorecard_rows = []
 for name, m in all_metrics.items():
@@ -211,23 +216,6 @@ for name, m in all_metrics.items():
         "AUC": round(m["auc"], 3) if m["auc"] is not None else "N/A",
     })
 score_df = pd.DataFrame(scorecard_rows)
-st.dataframe(score_df, width='stretch', hide_index=True)
-
-# Highlight best
-if len(score_df) > 1:
-    best_spear = score_df.loc[score_df["Spearman ρ"].idxmax(), "Strategy"]
-    st.markdown(f"**Best ranking accuracy (Spearman ρ):** `{best_spear}`")
-
-# ── Colors ─────────────────────────────────────────────────────────
-strategy_colors = {"royalblue": model_label}
-color_map = {model_label: "royalblue"}
-for bl_name, bl_info in active_baselines.items():
-    color_map[bl_name] = bl_info["color"]
-
-# ── Lift Curve ─────────────────────────────────────────────────────
-st.markdown("---")
-st.subheader("Lift Curve")
-st.markdown("> Shows what % of total revenue you capture by selecting the top X% of users ranked by each strategy.")
 
 fig_lift = go.Figure()
 for name, m in all_metrics.items():
@@ -242,9 +230,19 @@ fig_lift.add_trace(go.Scatter(
 fig_lift.update_layout(
     xaxis_title="% Users (ranked by strategy)",
     yaxis_title="% Cumulative Revenue Captured",
-    height=420, legend=dict(orientation="h", y=-0.15),
+    height=450, legend=dict(orientation="h", y=-0.15),
 )
-st.plotly_chart(fig_lift, width='stretch')
+
+col_score, col_lift = st.columns([1, 1.3])
+with col_score:
+    st.subheader("📋 Scorecard")
+    st.dataframe(score_df, use_container_width=True, hide_index=True, height=420)
+    if len(score_df) > 1:
+        best_spear = score_df.loc[score_df["Spearman ρ"].idxmax(), "Strategy"]
+        st.markdown(f"**Best ranking (Spearman ρ):** `{best_spear}`")
+with col_lift:
+    st.subheader("Lift Curve")
+    st.plotly_chart(fig_lift, use_container_width=True)
 
 # ── Precision@K & Recall@K ─────────────────────────────────────────
 st.subheader("Precision@K & Recall@K")
@@ -272,48 +270,51 @@ with col2:
                     color_discrete_map=color_map)
     st.plotly_chart(fig_rk, width='stretch')
 
-# ── Calibration Plot (model only) ──────────────────────────────────
-st.subheader("Calibration Plot")
-st.markdown("> Does the predicted revenue magnitude match reality? Points on the diagonal = well-calibrated.")
+# ── Calibration + ROC (side-by-side) ──────────────────────────────
 m0 = all_metrics[model_label]
-if m0["cal_pred"] and m0["cal_actual"]:
-    fig_cal = go.Figure()
-    fig_cal.add_trace(go.Scatter(
-        x=m0["cal_pred"], y=m0["cal_actual"],
-        mode="markers+lines", name=model_label, marker=dict(size=8, color="royalblue"),
-    ))
-    max_val = max(max(m0["cal_pred"]), max(m0["cal_actual"]))
-    fig_cal.add_trace(go.Scatter(
-        x=[0, max_val], y=[0, max_val], name="Perfect", line=dict(dash="dash", color="gray"),
-    ))
-    fig_cal.update_layout(
-        xaxis_title=f"Predicted LTV30 ({cur['symbol']})",
-        yaxis_title=f"Actual LTV30 ({cur['symbol']})",
-        height=400,
-    )
-    st.plotly_chart(fig_cal, width='stretch')
-
-# ── ROC Curve ──────────────────────────────────────────────────────
 any_auc = any(m["auc"] is not None for m in all_metrics.values())
-if any_auc:
-    st.subheader("ROC Curve (Payer Classification)")
-    st.markdown("> Can the strategy distinguish payers from non-payers?")
-    fig_roc = go.Figure()
-    for name, m in all_metrics.items():
-        if m["auc"] is not None:
-            fig_roc.add_trace(go.Scatter(
-                x=m["fpr"], y=m["tpr"],
-                name=f"{name} (AUC={m['auc']:.3f})",
-                line=dict(color=color_map.get(name, "blue"), width=2),
+
+if (m0["cal_pred"] and m0["cal_actual"]) or any_auc:
+    col_cal, col_roc = st.columns(2)
+    
+    with col_cal:
+        st.subheader("Calibration Plot")
+        if m0["cal_pred"] and m0["cal_actual"]:
+            fig_cal = go.Figure()
+            fig_cal.add_trace(go.Scatter(
+                x=m0["cal_pred"], y=m0["cal_actual"],
+                mode="markers+lines", name=model_label, marker=dict(size=8, color="royalblue"),
             ))
-    fig_roc.add_trace(go.Scatter(
-        x=[0, 1], y=[0, 1], name="Random", line=dict(dash="dash", color="lightgray"),
-    ))
-    fig_roc.update_layout(
-        xaxis_title="False Positive Rate", yaxis_title="True Positive Rate",
-        height=400, legend=dict(orientation="h", y=-0.15),
-    )
-    st.plotly_chart(fig_roc, width='stretch')
+            max_val = max(max(m0["cal_pred"]), max(m0["cal_actual"]))
+            fig_cal.add_trace(go.Scatter(
+                x=[0, max_val], y=[0, max_val], name="Perfect", line=dict(dash="dash", color="gray"),
+            ))
+            fig_cal.update_layout(
+                xaxis_title=f"Predicted LTV30 ({cur['symbol']})",
+                yaxis_title=f"Actual LTV30 ({cur['symbol']})",
+                height=420,
+            )
+            st.plotly_chart(fig_cal, use_container_width=True)
+    
+    with col_roc:
+        st.subheader("ROC Curve")
+        if any_auc:
+            fig_roc = go.Figure()
+            for name, m in all_metrics.items():
+                if m["auc"] is not None:
+                    fig_roc.add_trace(go.Scatter(
+                        x=m["fpr"], y=m["tpr"],
+                        name=f"{name} (AUC={m['auc']:.3f})",
+                        line=dict(color=color_map.get(name, "blue"), width=2),
+                    ))
+            fig_roc.add_trace(go.Scatter(
+                x=[0, 1], y=[0, 1], name="Random", line=dict(dash="dash", color="lightgray"),
+            ))
+            fig_roc.update_layout(
+                xaxis_title="False Positive Rate", yaxis_title="True Positive Rate",
+                height=420, legend=dict(orientation="h", y=-0.15),
+            )
+            st.plotly_chart(fig_roc, use_container_width=True)
 
 # ── Educational takeaway ───────────────────────────────────────────
 st.markdown("---")

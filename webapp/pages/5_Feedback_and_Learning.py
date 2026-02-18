@@ -11,11 +11,12 @@ import plotly.graph_objects as go
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from shared import render_sidebar, get_data, format_currency, convert_vnd, get_currency_info, REPORTS_DIR
+from shared import render_sidebar, render_top_menu, get_data, format_currency, convert_vnd, get_currency_info, REPORTS_DIR
 
+render_top_menu()
 render_sidebar()
 
-st.title("🔄 Layer 5 — Feedback & Learning")
+st.title("🔄 Feedback & Learning")
 
 if st.session_state.get("data_missing", False):
     st.warning("⚠️ No training data found")
@@ -24,7 +25,6 @@ if st.session_state.get("data_missing", False):
 
 df = get_data()
 st.caption(f"Training data: **{len(df):,}** rows (2025-12-16 to 2026-01-08)")
-st.markdown("---")
 
 report_path = REPORTS_DIR / "feedback_stub.md"
 if report_path.exists():
@@ -62,7 +62,39 @@ fig_time.update_layout(
     yaxis2=dict(title=f"Avg LTV30 ({cur['symbol']})", side="right", overlaying="y"),
     height=400,
 )
-st.plotly_chart(fig_time, width='stretch')
+
+# --- Install week stability (compute early for side-by-side) ---
+df["install_week"] = df["install_date"].dt.isocalendar().week.astype(int)
+week_stats = df.groupby("install_week").agg(
+    users=("vopenid", "count"),
+    avg_ltv30=("ltv30", "mean"),
+    payer_rate=("is_payer_30", "mean"),
+).reset_index()
+week_stats["avg_ltv30_display"] = convert_vnd(week_stats["avg_ltv30"], cur["code"])
+
+fig_week = go.Figure()
+fig_week.add_trace(go.Bar(
+    x=week_stats["install_week"].astype(str), y=week_stats["users"],
+    name="Users", marker_color="lightblue", yaxis="y",
+))
+fig_week.add_trace(go.Scatter(
+    x=week_stats["install_week"].astype(str), y=week_stats["avg_ltv30_display"],
+    name="Avg LTV30", line=dict(color="red", width=2), yaxis="y2",
+))
+fig_week.update_layout(
+    title="Weekly Cohort Stability",
+    xaxis_title="Install Week",
+    yaxis=dict(title="Users", side="left"),
+    yaxis2=dict(title=f"Avg LTV30 ({cur['symbol']})", side="right", overlaying="y"),
+    height=400,
+)
+
+# Display side-by-side
+col_time, col_week = st.columns(2)
+with col_time:
+    st.plotly_chart(fig_time, use_container_width=True)
+with col_week:
+    st.plotly_chart(fig_week, use_container_width=True)
 
 # --- Robustness / Stability ---
 st.header("Robustness / Stability Check")
@@ -109,34 +141,6 @@ else:
     ]
     st.subheader("By Country (Simulated)")
     st.dataframe(pd.DataFrame(stability_data), width='stretch')
-
-# --- Install week stability ---
-st.subheader("By Install Week")
-df["install_week"] = df["install_date"].dt.isocalendar().week.astype(int)
-week_stats = df.groupby("install_week").agg(
-    users=("vopenid", "count"),
-    avg_ltv30=("ltv30", "mean"),
-    payer_rate=("is_payer_30", "mean"),
-).reset_index()
-
-fig_week = go.Figure()
-fig_week.add_trace(go.Bar(
-    x=week_stats["install_week"].astype(str), y=week_stats["users"],
-    name="Users", marker_color="lightblue", yaxis="y",
-))
-week_stats["avg_ltv30_display"] = convert_vnd(week_stats["avg_ltv30"], cur["code"])
-fig_week.add_trace(go.Scatter(
-    x=week_stats["install_week"].astype(str), y=week_stats["avg_ltv30_display"],
-    name="Avg LTV30", line=dict(color="red", width=2), yaxis="y2",
-))
-fig_week.update_layout(
-    title="Weekly Cohort Stability",
-    xaxis_title="Install Week",
-    yaxis=dict(title="Users", side="left"),
-    yaxis2=dict(title=f"Avg LTV30 ({cur['symbol']})", side="right", overlaying="y"),
-    height=400,
-)
-st.plotly_chart(fig_week, width='stretch')
 
 # --- Planned A/B Tests ---
 st.header("Planned A/B Tests")

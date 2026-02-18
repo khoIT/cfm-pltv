@@ -15,16 +15,17 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shared import (
-    render_sidebar, get_data, get_test_data, format_currency, convert_vnd,
+    render_sidebar, render_top_menu, get_data, get_test_data, format_currency, convert_vnd,
     get_currency_info, REPORTS_DIR,
     FEATURE_GROUPS, ALL_NUMERIC_FEATURES, ALL_CAT_FEATURES, TEST_DATASETS,
     get_selected_features, get_flat_selected_features,
 )
 from model_registry import save_model, load_model, show_model_management_ui
 
+render_top_menu()
 render_sidebar()
 
-st.title("🔧 Layer 2 — Features, Model Registry & Training")
+st.title("⚔️ Features & Model Training")
 
 if st.session_state.get("data_missing", False):
     st.warning("⚠️ No training data found")
@@ -33,7 +34,6 @@ if st.session_state.get("data_missing", False):
 
 df = get_data()
 st.caption(f"Training data: **{len(df):,}** rows (2025-12-16 to 2026-01-08)")
-st.markdown("---")
 
 # Report
 report_path = REPORTS_DIR / "feature_store_overview.md"
@@ -44,7 +44,7 @@ if report_path.exists():
 # =====================================================================
 # SECTION 1 — Feature Profiling
 # =====================================================================
-st.header("📊 Feature Profiling")
+st.header("📊 Feature Profiling & Correlations")
 cur = get_currency_info()
 available_numeric = [f for f in ALL_NUMERIC_FEATURES if f in df.columns]
 
@@ -57,19 +57,8 @@ for c in available_numeric:
 
 profile = profile_df.describe().T
 profile["null_pct"] = (df[available_numeric].isnull().sum() / len(df) * 100).round(1)
-st.dataframe(profile[["null_pct", "mean", "std", "min", "50%", "max"]].rename(
-    columns={"null_pct": "Null %", "50%": "Median"}
-), width='stretch')
-if cur["code"] == "USD":
-    st.caption("💱 Monetary values (rev_d7) shown in USD")
-
-# --- Correlation with LTV30 ---
-st.header("Feature Correlations with LTV30")
-st.markdown("> **Why this matters:** Features with high Spearman ρ are strong ranking signals. "
-            "A model that combines them should outperform any single-feature heuristic.")
 
 currency_label = f"LTV30 ({cur['symbol']})"
-
 corr_with_ltv = df[available_numeric + ["ltv30"]].corr(method="spearman")["ltv30"].drop("ltv30").sort_values(ascending=False)
 fig_corr = px.bar(
     x=corr_with_ltv.values, y=corr_with_ltv.index,
@@ -77,8 +66,19 @@ fig_corr = px.bar(
     labels={"x": "Spearman ρ", "y": "Feature"},
     color=corr_with_ltv.values, color_continuous_scale="RdYlGn",
 )
-fig_corr.update_layout(height=500, yaxis=dict(autorange="reversed"))
-st.plotly_chart(fig_corr, width='stretch')
+fig_corr.update_layout(height=450, yaxis=dict(autorange="reversed"))
+
+col_profile, col_corr = st.columns(2)
+with col_profile:
+    st.subheader("Feature Statistics")
+    st.dataframe(profile[["null_pct", "mean", "std", "min", "50%", "max"]].rename(
+        columns={"null_pct": "Null %", "50%": "Median"}
+    ), use_container_width=True, height=450)
+    if cur["code"] == "USD":
+        st.caption("💱 Monetary values (rev_d7) shown in USD")
+with col_corr:
+    st.subheader("Correlations with LTV30")
+    st.plotly_chart(fig_corr, use_container_width=True)
 
 # --- Cohort Distributions ---
 with st.expander("📈 Cohort Distributions", expanded=False):
@@ -191,6 +191,27 @@ if "loaded_model" in st.session_state:
     with col_meta3:
         st.metric("Saved", loaded_metadata.get('training_date', 'N/A'))
     
+    # Show feature importance chart + top 5 drivers side-by-side
+    saved_importances = loaded_metadata.get('feature_importances', {})
+    if saved_importances:
+        sorted_imp = sorted(saved_importances.items(), key=lambda x: x[1], reverse=True)
+        top15_saved = sorted_imp[:15]
+        fig_imp_loaded = px.bar(
+            x=[v for _, v in top15_saved], y=[k for k, _ in top15_saved], orientation="h",
+            title="Feature Importances (top 15)",
+            labels={"x": "Importance", "y": "Feature"},
+            color=[v for _, v in top15_saved], color_continuous_scale="Tealgrn",
+        )
+        fig_imp_loaded.update_layout(yaxis=dict(autorange="reversed"), height=400)
+
+        col_chart, col_drivers = st.columns([1.4, 1])
+        with col_chart:
+            st.plotly_chart(fig_imp_loaded, use_container_width=True)
+        with col_drivers:
+            st.markdown("#### 🏆 Top 5 Drivers of pLTV")
+            for feat, imp_val in sorted_imp[:5]:
+                st.metric(feat, f"{imp_val:.3f}")
+    
     if st.button("🔄 Use This Model", type="primary"):
         st.session_state["model"] = st.session_state["loaded_model"]
         st.session_state["model_features"] = loaded_metadata.get('features', [])
@@ -241,15 +262,25 @@ if train_clicked and total_sel > 0:
             model.fit(X_train, y_train, verbose=False)
 
             # Feature importance
-            importance = pd.Series(model.feature_importances_, index=X_train.columns).sort_values(ascending=False).head(15)
+            importance = pd.Series(model.feature_importances_, index=X_train.columns).sort_values(ascending=False)
+            top15 = importance.head(15)
             fig_imp = px.bar(
-                x=importance.values, y=importance.index, orientation="h",
-                title="Feature Importances (XGBoost — your selected features)",
+                x=top15.values, y=top15.index, orientation="h",
+                title="Feature Importances (top 15)",
                 labels={"x": "Importance", "y": "Feature"},
-                color=importance.values, color_continuous_scale="Tealgrn",
+                color=top15.values, color_continuous_scale="Tealgrn",
             )
             fig_imp.update_layout(yaxis=dict(autorange="reversed"), height=400)
-            st.plotly_chart(fig_imp, use_container_width=True)
+
+            # Chart + Top 5 side-by-side
+            col_chart, col_drivers = st.columns([1.4, 1])
+            with col_chart:
+                st.plotly_chart(fig_imp, use_container_width=True)
+            with col_drivers:
+                st.markdown("#### 🏆 Top 5 Drivers of pLTV")
+                top5 = importance.head(5)
+                for feat, imp_val in top5.items():
+                    st.metric(feat, f"{imp_val:.3f}")
 
             # Store in session for other pages
             st.session_state["model"] = model
@@ -260,6 +291,9 @@ if train_clicked and total_sel > 0:
 
             st.success(f"✅ Model trained with **{total_sel} features** on **{len(X_train):,}** rows.")
             
+            # Build feature importance dict for saving
+            feat_importance_dict = {k: round(float(v), 6) for k, v in importance.items()}
+
             # Store training metadata for saving later
             st.session_state["last_training_metadata"] = {
                 'model_type': 'XGBoost Regressor',
@@ -268,6 +302,7 @@ if train_clicked and total_sel > 0:
                 'features': num_sel + cat_sel,
                 'numeric_features': num_sel,
                 'categorical_features': cat_sel,
+                'feature_importances': feat_importance_dict,
                 'hyperparameters': {
                     'n_estimators': 200,
                     'max_depth': 6,

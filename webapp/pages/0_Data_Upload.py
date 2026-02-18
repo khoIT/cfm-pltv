@@ -8,12 +8,13 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from shared import render_sidebar, DATA_DIR
+from shared import render_sidebar, render_top_menu, DATA_DIR
 from data_uploader import show_upload_interface, check_data_exists
 
+render_top_menu()
 render_sidebar()
 
-st.title("📤 Data Upload & Preparation")
+st.title("📤 Data Upload")
 
 # Check if data already exists
 if check_data_exists():

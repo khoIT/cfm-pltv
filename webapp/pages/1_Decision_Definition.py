@@ -12,14 +12,14 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shared import (
-    render_sidebar, get_data, format_currency, convert_vnd,
+    render_sidebar, render_top_menu, get_data, format_currency, convert_vnd,
     get_currency_info, REPORTS_DIR,
 )
 
+render_top_menu()
 render_sidebar()
 
-st.title("📋 Layer 1 — Decision Definition")
-st.markdown("---")
+st.title("🎯 Decision Definition")
 
 if st.session_state.get("data_missing", False):
     st.warning("⚠️ No training data found")
@@ -89,42 +89,45 @@ gini = (2 * np.sum(idx * ltv_asc) / (n * np.sum(ltv_asc))) - (n + 1) / n if np.s
 st.metric("Gini Coefficient (Revenue Inequality)", f"{gini:.3f}",
           help="0 = perfectly equal, 1 = one user has all revenue. F2P games typically 0.85–0.95.")
 
-# Lorenz curve
-st.subheader("Lorenz Curve — Revenue Inequality")
+# Lorenz curve + LTV Distribution side-by-side
 cum_users = np.linspace(0, 100, 101)
 cum_rev_pct = np.array([0] + [ltv_asc[:int(len(ltv_asc)*p/100)].sum() / total_rev * 100 for p in range(1, 101)])
 
-fig_lorenz = go.Figure()
-fig_lorenz.add_trace(go.Scatter(x=cum_users, y=cum_rev_pct, name="Actual", line=dict(color="royalblue", width=2)))
-fig_lorenz.add_trace(go.Scatter(x=[0, 100], y=[0, 100], name="Perfect Equality", line=dict(color="gray", dash="dash")))
-fig_lorenz.update_layout(
-    xaxis_title="% of Users (sorted by LTV30 ascending)",
-    yaxis_title="% of Cumulative Revenue",
-    height=400, showlegend=True,
-)
-st.plotly_chart(fig_lorenz, width='stretch')
-
-# =====================================================================
-# LTV Distribution — converted values
-# =====================================================================
-st.subheader("LTV30 Distribution")
-ltv_nonzero = df[df["ltv30"] > 0].copy()
-if len(ltv_nonzero) > 0:
-    ltv_nonzero["ltv30_display"] = convert_vnd(ltv_nonzero["ltv30"], cur["code"])
-    fig = px.histogram(
-        ltv_nonzero, x="ltv30_display", nbins=50,
-        title="LTV30 Distribution (Payers Only, Log Scale)",
-        log_y=True, labels={"ltv30_display": f"LTV30 ({cur['symbol']})", "count": "Users"},
+col_lorenz, col_ltv = st.columns(2)
+with col_lorenz:
+    st.subheader("Lorenz Curve")
+    fig_lorenz = go.Figure()
+    fig_lorenz.add_trace(go.Scatter(x=cum_users, y=cum_rev_pct, name="Actual", line=dict(color="royalblue", width=2)))
+    fig_lorenz.add_trace(go.Scatter(x=[0, 100], y=[0, 100], name="Perfect Equality", line=dict(color="gray", dash="dash")))
+    fig_lorenz.update_layout(
+        xaxis_title="% of Users (sorted by LTV30 ascending)",
+        yaxis_title="% of Cumulative Revenue",
+        height=400, showlegend=True,
     )
-    fig.update_layout(showlegend=False)
-    st.plotly_chart(fig, width='stretch')
-else:
-    st.info("No payers in dataset.")
+    st.plotly_chart(fig_lorenz, use_container_width=True)
+
+with col_ltv:
+    st.subheader("LTV30 Distribution")
+    ltv_nonzero = df[df["ltv30"] > 0].copy()
+    if len(ltv_nonzero) > 0:
+        ltv_nonzero["ltv30_display"] = convert_vnd(ltv_nonzero["ltv30"], cur["code"])
+        fig = px.histogram(
+            ltv_nonzero, x="ltv30_display", nbins=50,
+            title="LTV30 Distribution (Payers Only, Log Scale)",
+            log_y=True, labels={"ltv30_display": f"LTV30 ({cur['symbol']})", "count": "Users"},
+        )
+        fig.update_layout(showlegend=False, height=400)
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("No payers in dataset.")
 
 # =====================================================================
-# Paying Rate by Media Source — converted values
+# Paying Rate + Whale Economy (side-by-side header)
 # =====================================================================
-st.subheader("Paying Rate by Media Source")
+st.header("🐋 Whale Economy Analysis")
+st.markdown("> With high revenue concentration, understanding your whale segments is critical "
+            "for UA targeting and retention strategy.")
+
 media_pay = df.groupby("media_source").agg(
     users=("vopenid", "count"),
     payers=("is_payer_30", "sum"),
@@ -132,23 +135,6 @@ media_pay = df.groupby("media_source").agg(
 ).reset_index()
 media_pay["pay_rate"] = (media_pay["payers"] / media_pay["users"] * 100).round(1)
 media_pay["avg_ltv30_display"] = convert_vnd(media_pay["avg_ltv30"], cur["code"])
-
-fig2 = px.bar(
-    media_pay.sort_values("pay_rate", ascending=False),
-    x="media_source", y="pay_rate",
-    color="avg_ltv30_display", color_continuous_scale="Viridis",
-    title="Paying Rate & Avg LTV30 by Media Source",
-    labels={"pay_rate": "Paying Rate (%)", "media_source": "Media Source",
-            "avg_ltv30_display": f"Avg LTV30 ({cur['symbol']})"},
-)
-st.plotly_chart(fig2, width='stretch')
-
-# =====================================================================
-# Whale Economy Analysis
-# =====================================================================
-st.header("🐋 Whale Economy Analysis")
-st.markdown("> With high revenue concentration, understanding your whale segments is critical "
-            "for UA targeting and retention strategy.")
 
 # Segment users into tiers
 df_seg = df.copy()
@@ -209,31 +195,46 @@ with col_pie2:
     )
     st.plotly_chart(fig_pie2, width='stretch')
 
-# Whale media source distribution
-st.subheader("🎯 Where Do Whales Come From?")
-st.markdown("> Knowing which media sources produce whales helps **optimize UA spend** for maximum ROAS.")
-whales = df_seg[df_seg["tier"] == "Whale"]
-if len(whales) > 0:
-    whale_source = whales.groupby("media_source").agg(
-        whale_count=("vopenid", "count"),
-        whale_rev=("ltv30", "sum"),
-    ).reset_index()
-    total_users_by_source = df_seg.groupby("media_source")["vopenid"].count().reset_index()
-    total_users_by_source.columns = ["media_source", "total_users"]
-    whale_source = whale_source.merge(total_users_by_source, on="media_source")
-    whale_source["whale_rate"] = (whale_source["whale_count"] / whale_source["total_users"] * 100).round(2)
-    whale_source["avg_whale_ltv"] = whale_source["whale_rev"] / whale_source["whale_count"]
-    whale_source["avg_whale_ltv_display"] = convert_vnd(whale_source["avg_whale_ltv"], cur["code"])
-    whale_source = whale_source.sort_values("whale_count", ascending=False)
-
-    fig_ws = px.bar(
-        whale_source, x="media_source", y="whale_count",
-        color="whale_rate",
-        color_continuous_scale="Reds",
-        title="Whale Count & Whale Rate by Media Source",
-        labels={"whale_count": "Whale Count", "media_source": "Media Source", "whale_rate": "Whale Rate (%)"},
+# Paying Rate + Whale Media Source side-by-side
+col_pay, col_whale = st.columns(2)
+with col_pay:
+    st.subheader("Paying Rate by Media Source")
+    fig2 = px.bar(
+        media_pay.sort_values("pay_rate", ascending=False),
+        x="media_source", y="pay_rate",
+        color="avg_ltv30_display", color_continuous_scale="Viridis",
+        title="Paying Rate & Avg LTV30 by Media Source",
+        labels={"pay_rate": "Paying Rate (%)", "media_source": "Media Source",
+                "avg_ltv30_display": f"Avg LTV30 ({cur['symbol']})"},
     )
-    st.plotly_chart(fig_ws, width='stretch')
+    fig2.update_layout(height=420)
+    st.plotly_chart(fig2, use_container_width=True)
+
+with col_whale:
+    st.subheader("🎯 Where Do Whales Come From?")
+    whales = df_seg[df_seg["tier"] == "Whale"]
+    if len(whales) > 0:
+        whale_source = whales.groupby("media_source").agg(
+            whale_count=("vopenid", "count"),
+            whale_rev=("ltv30", "sum"),
+        ).reset_index()
+        total_users_by_source = df_seg.groupby("media_source")["vopenid"].count().reset_index()
+        total_users_by_source.columns = ["media_source", "total_users"]
+        whale_source = whale_source.merge(total_users_by_source, on="media_source")
+        whale_source["whale_rate"] = (whale_source["whale_count"] / whale_source["total_users"] * 100).round(2)
+        whale_source["avg_whale_ltv"] = whale_source["whale_rev"] / whale_source["whale_count"]
+        whale_source["avg_whale_ltv_display"] = convert_vnd(whale_source["avg_whale_ltv"], cur["code"])
+        whale_source = whale_source.sort_values("whale_count", ascending=False)
+
+        fig_ws = px.bar(
+            whale_source, x="media_source", y="whale_count",
+            color="whale_rate",
+            color_continuous_scale="Reds",
+            title="Whale Count & Whale Rate by Media Source",
+            labels={"whale_count": "Whale Count", "media_source": "Media Source", "whale_rate": "Whale Rate (%)"},
+        )
+        fig_ws.update_layout(height=420)
+        st.plotly_chart(fig_ws, use_container_width=True)
 
 # Whale early signals
 st.subheader("🔮 Early Signals: D7 Behavior of Whales vs Others")

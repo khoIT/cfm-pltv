@@ -10,11 +10,12 @@ import json
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from shared import render_sidebar
+from shared import render_sidebar, render_top_menu
 
+render_top_menu()
 render_sidebar()
 
-st.title("📓 Interactive Notebooks")
+st.title("📓 Notebooks")
 st.markdown("Explore analysis notebooks directly in your browser — no Jupyter installation needed!")
 
 # Notebook directory
