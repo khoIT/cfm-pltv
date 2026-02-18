@@ -177,6 +177,7 @@ def render_sidebar():
         ("🎯 Decision Definition", "pages/1_Decision_Definition.py"),
         ("⚔️ Features and Model", "pages/2_Features_and_Model.py"),
         ("📊 Evaluation and Insights", "pages/3_Evaluation_and_Insights.py"),
+        ("🔍 Late Payer Analysis", "pages/3b_Late_Payer_Analysis.py"),
         ("🎮 Action and Simulation", "pages/4_Action_and_Simulation.py"),
         ("🔄 Feedback and Learning", "pages/5_Feedback_and_Learning.py"),
         ("🔬 Diagnostics", "pages/6_Diagnostics.py"),
