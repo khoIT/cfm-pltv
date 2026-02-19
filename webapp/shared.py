@@ -234,7 +234,7 @@ def render_sidebar():
         st.page_link("pages/3_Evaluation_and_Insights.py", label="  📊 Model Evaluation")
         st.page_link("pages/4_Action_and_Simulation.py", label="  🎮 Action & Simulation")
         st.page_link("pages/5_Feedback_and_Learning.py", label="  📉 Cohort Stability")
-        st.page_link("pages/6_Summary.py", label="  � Summary & Next Steps")
+        st.page_link("pages/6_Summary.py", label="  📋 Summary & Next Steps")
     
     # Standalone reports
     st.sidebar.page_link("pages/3b_Late_Payer_Analysis.py", label="🔍 Late Payer Analysis")

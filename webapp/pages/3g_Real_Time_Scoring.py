@@ -1,6 +1,8 @@
 """
 Page 3g — Real-Time Scoring (Early Prediction)
-Simulate D1/D3/D5/D7 prediction windows and compare accuracy retention.
+Uses actual D1/D3/D5/D7 window data from cfm_pltv_D135 dataset.
+Each window_days value in the dataset contains real feature aggregations
+for that number of days post-install.
 """
 import streamlit as st
 import pandas as pd
@@ -19,130 +21,179 @@ from shared import (
 render_top_menu()
 render_sidebar()
 
+# Feature columns present in the D135 multi-window dataset
+WINDOW_FEATURE_COLS = [
+    "login_rows", "active_days", "loginchannel_variety", "network_variety",
+    "clientversion_variety", "max_level_seen", "max_viplevel_seen", "max_ladderscore",
+    "games", "win_rate", "avg_game_duration", "avg_score",
+    "kills", "deaths", "assists", "kd", "max_level_game", "max_ladderlevel",
+    "rev", "txn_cnt",
+]
 
 # ── helpers ────────────────────────────────────────────────────────
-@st.cache_data(show_spinner="Simulating early prediction windows…")
+@st.cache_data(show_spinner="Training models on actual D1/D3/D5/D7 windows…")
 def compute_realtime_metrics(csv_path: str, file_mtime: float):
     df = pd.read_csv(csv_path, low_memory=False)
-    if "ltv30" not in df.columns:
-        return None, None, "Dataset must contain 'ltv30' column."
 
-    y = df["ltv30"].values
-    n = len(y)
+    required = {"window_days", "ltv30"}
+    missing = required - set(df.columns)
+    if missing:
+        return None, None, (
+            f"Dataset missing columns: {missing}. "
+            "Please select a cfm_pltv_D135_part*.csv file which contains actual multi-window data."
+        )
 
-    # Engagement features available
-    eng_cols = [c for c in ["games_d7", "active_days_d7", "login_rows_d7",
-                             "kd_d7", "win_rate_d7", "avg_score_d7",
-                             "max_level_seen_d7", "kills_d7"] if c in df.columns]
-
-    if not eng_cols:
-        return None, None, "No engagement features found to simulate early windows."
-
-    # Build feature matrix from available columns
-    X_d7 = df[eng_cols].fillna(0).values
-
-    # Simulate shorter windows by scaling features (proxy for having fewer days of data)
-    # D1 ≈ 1/7 of D7 signal, D3 ≈ 3/7, D5 ≈ 5/7
-    windows = {
-        "D1": 1 / 7,
-        "D3": 3 / 7,
-        "D5": 5 / 7,
-        "D7": 1.0,
-    }
+    feat_cols = [c for c in WINDOW_FEATURE_COLS if c in df.columns]
+    if not feat_cols:
+        return None, None, "No feature columns found. Expected login_rows, games, rev, etc."
 
     from sklearn.ensemble import GradientBoostingRegressor
-    from sklearn.model_selection import cross_val_predict
+    from sklearn.model_selection import train_test_split
     from scipy.stats import spearmanr
+
+    windows_present = sorted(df["window_days"].unique())
+    window_map = {1: "D1", 3: "D3", 5: "D5", 7: "D7"}
 
     results = []
     preds_by_window = {}
+    y_true_d7 = None
 
-    for window_name, scale in windows.items():
-        X_scaled = X_d7 * scale
-        # Add noise proportional to missing signal
-        noise_std = X_d7.std(axis=0) * (1 - scale) * 0.3
-        noise = np.random.RandomState(42).normal(0, noise_std, X_scaled.shape)
-        X_w = np.clip(X_scaled + noise, 0, None)
+    # Use D7 data as the label source (ltv30 is the same for all windows per user)
+    df_d7 = df[df["window_days"] == 7].copy()
+    if len(df_d7) == 0:
+        return None, None, "No D7 rows found in dataset. Cannot establish baseline."
 
-        model = GradientBoostingRegressor(n_estimators=100, max_depth=4,
-                                          learning_rate=0.1, random_state=42)
-        y_pred = cross_val_predict(model, X_w, y, cv=3)
+    # Build a vopenid → ltv30 map from D7 rows
+    ltv_map = df_d7.set_index("vopenid")["ltv30"].to_dict()
+    y_d7 = df_d7["ltv30"].values
+    y_true_d7 = y_d7
+
+    # Train/test split on D7 users (same users across all windows)
+    vopenids_d7 = df_d7["vopenid"].values
+    X_d7 = df_d7[feat_cols].fillna(0).values
+    X_train, X_test, y_train, y_test, vid_train, vid_test = train_test_split(
+        X_d7, y_d7, vopenids_d7, test_size=0.2, random_state=42
+    )
+    vid_test_set = set(vid_test)
+
+    for w_days in windows_present:
+        if w_days not in window_map:
+            continue
+        window_name = window_map[w_days]
+        df_w = df[df["window_days"] == w_days].copy()
+
+        # Align test users: use same test vopenids as D7 split
+        df_w_test = df_w[df_w["vopenid"].isin(vid_test_set)].copy()
+        df_w_train = df_w[~df_w["vopenid"].isin(vid_test_set)].copy()
+
+        if len(df_w_train) < 100 or len(df_w_test) < 100:
+            continue
+
+        X_w_train = df_w_train[feat_cols].fillna(0).values
+        y_w_train = df_w_train["ltv30"].values
+        X_w_test = df_w_test[feat_cols].fillna(0).values
+        y_w_test = df_w_test["ltv30"].values
+
+        model = GradientBoostingRegressor(
+            n_estimators=150, max_depth=5, learning_rate=0.08,
+            subsample=0.8, random_state=42
+        )
+        model.fit(X_w_train, np.log1p(y_w_train))
+        y_pred = np.expm1(model.predict(X_w_test))
         y_pred = np.clip(y_pred, 0, None)
 
-        # Metrics
-        spearman_rho, _ = spearmanr(y, y_pred)
-        rmse = np.sqrt(np.mean((y - y_pred) ** 2))
-
-        # Lift@10%: how much revenue is captured in top 10% predicted users
-        top10_idx = np.argsort(y_pred)[::-1][:int(n * 0.10)]
-        lift = y[top10_idx].sum() / y.sum() if y.sum() > 0 else 0
+        n = len(y_w_test)
+        spearman_rho, _ = spearmanr(y_w_test, y_pred)
+        rmse = np.sqrt(np.mean((y_w_test - y_pred) ** 2))
+        top10_idx = np.argsort(y_pred)[::-1][:max(1, int(n * 0.10))]
+        lift = y_w_test[top10_idx].sum() / y_w_test.sum() if y_w_test.sum() > 0 else 0
 
         results.append({
             "Window": window_name,
-            "Days": int(window_name[1:]),
+            "Days": w_days,
             "Spearman ρ": round(spearman_rho, 4),
             "Lift@10%": round(lift * 100, 1),
             "RMSE": round(rmse, 0),
+            "Test Users": n,
         })
-        preds_by_window[window_name] = y_pred
+        preds_by_window[window_name] = (y_w_test, y_pred)
 
-    results_df = pd.DataFrame(results)
+    if not results:
+        return None, None, "Could not compute metrics for any window."
 
-    # Accuracy retention relative to D7
-    d7_spearman = results_df.loc[results_df["Window"] == "D7", "Spearman ρ"].iloc[0]
-    d7_lift = results_df.loc[results_df["Window"] == "D7", "Lift@10%"].iloc[0]
-    results_df["Spearman Retention %"] = (results_df["Spearman ρ"] / d7_spearman * 100).round(1)
-    results_df["Lift Retention %"] = (results_df["Lift@10%"] / d7_lift * 100).round(1)
+    results_df = pd.DataFrame(results).sort_values("Days")
 
+    d7_spearman = results_df.loc[results_df["Window"] == "D7", "Spearman ρ"].values
+    d7_lift = results_df.loc[results_df["Window"] == "D7", "Lift@10%"].values
+    if len(d7_spearman) > 0 and d7_spearman[0] > 0:
+        results_df["Spearman Retention %"] = (results_df["Spearman ρ"] / d7_spearman[0] * 100).round(1)
+        results_df["Lift Retention %"] = (results_df["Lift@10%"] / d7_lift[0] * 100).round(1)
+    else:
+        results_df["Spearman Retention %"] = 100.0
+        results_df["Lift Retention %"] = 100.0
+
+    n_unique_users = df["vopenid"].nunique()
     return df, {
         "results": results_df,
         "preds": preds_by_window,
-        "y_true": y,
-        "eng_cols": eng_cols,
+        "y_true_d7": y_true_d7,
+        "feat_cols": feat_cols,
+        "n_unique_users": n_unique_users,
     }, None
 
 
 def list_available_datasets():
+    """List D135 part files first, then other cfm_pltv datasets."""
     datasets = {}
-    for f in DATA_DIR.glob("cfm_pltv*.csv"):
+    # Prioritise D135 parts
+    for f in sorted(DATA_DIR.glob("cfm_pltv_D135_part*.csv")):
         size_mb = f.stat().st_size / 1e6
         datasets[f.stem] = {"path": str(f), "size_mb": size_mb, "mtime": f.stat().st_mtime}
+    # Then other datasets
+    for f in DATA_DIR.glob("cfm_pltv*.csv"):
+        if f.stem not in datasets:
+            size_mb = f.stat().st_size / 1e6
+            datasets[f.stem] = {"path": str(f), "size_mb": size_mb, "mtime": f.stat().st_mtime}
     return datasets
 
 
 # ── page ───────────────────────────────────────────────────────────
 st.title("⚡ Real-Time Scoring")
 st.markdown(
-    "Simulate **D1 / D3 / D5 / D7** prediction windows to quantify how much accuracy is lost "
-    "by predicting earlier. Earlier predictions enable faster seed generation, bid adjustments, "
-    "and campaign kill decisions."
+    "Evaluate **D1 / D3 / D5 / D7** prediction windows using **actual behavioural data** "
+    "aggregated at each window length. Quantifies how much accuracy is lost by predicting earlier, "
+    "enabling faster seed generation, bid adjustments, and campaign kill decisions."
 )
-st.info(
-    "**Note:** D1/D3/D5 windows are simulated by scaling D7 features. "
-    "Production should use actual shorter-window SQL aggregations for precise results.",
-    icon="ℹ️"
+st.success(
+    "✅ **Using real multi-window data** (Dec 16 2025 – Feb 19 2026). "
+    "Each window uses actual feature aggregations — no simulation.",
+    icon="✅"
 )
 
 cur = get_currency_info()
 
 # ── Dataset selector ───────────────────────────────────────────────
-st.header("📂 Select Dataset")
+st.header("📂 Select Dataset Part")
 datasets = list_available_datasets()
 if not datasets:
     st.error("No datasets found in data/ directory.")
     st.stop()
 
 ds_names = list(datasets.keys())
-default_idx = ds_names.index("cfm_pltv") if "cfm_pltv" in ds_names else 0
+# Default to part01
+default_idx = next((i for i, n in enumerate(ds_names) if "D135_part01" in n), 0)
 col_ds1, col_ds2 = st.columns([2, 3])
 with col_ds1:
-    chosen_ds = st.selectbox("Dataset", ds_names, index=default_idx, key="realtime_dataset",
-                             help="Choose which dataset to analyze")
+    chosen_ds = st.selectbox(
+        "Dataset part", ds_names, index=default_idx, key="realtime_dataset",
+        help="Each part contains ~1M rows across D1/D3/D5/D7 windows (~250k unique users)"
+    )
 with col_ds2:
     ds_info = datasets[chosen_ds]
-    st.markdown(f"**{chosen_ds}** — {ds_info['size_mb']:.1f} MB")
+    st.markdown(f"**{chosen_ds}** — {ds_info['size_mb']:.0f} MB")
+    st.caption("Contains actual D1/D3/D5/D7 feature windows per user")
 
-with st.spinner("Training models for D1/D3/D5/D7 windows… (this may take ~30s)"):
+with st.spinner("Training GBM models on actual D1/D3/D5/D7 windows… (~20–40s, cached after first run)"):
     df_raw, metrics, error = compute_realtime_metrics(ds_info["path"], ds_info["mtime"])
 
 if error:
@@ -151,10 +202,10 @@ if error:
 
 results_df = metrics["results"]
 preds = metrics["preds"]
-y_true = metrics["y_true"]
-n_users = len(df_raw)
+n_unique = metrics["n_unique_users"]
+n_feat = len(metrics["feat_cols"])
 
-st.success(f"✅ Evaluated **{n_users:,}** users across 4 prediction windows using {len(metrics['eng_cols'])} features")
+st.success(f"✅ Evaluated **{n_unique:,}** unique users across {len(results_df)} prediction windows using {n_feat} features")
 
 # ── Report ─────────────────────────────────────────────────────────
 render_report_md(REPORTS_DIR / "Real_Time_Scoring.md", "📄 Full Real-Time Scoring Report")
@@ -163,9 +214,12 @@ render_report_md(REPORTS_DIR / "Real_Time_Scoring.md", "📄 Full Real-Time Scor
 st.markdown("---")
 st.header("📊 Window Performance Summary")
 
-d3_row = results_df[results_df["Window"] == "D3"].iloc[0]
-d7_row = results_df[results_df["Window"] == "D7"].iloc[0]
-d1_row = results_df[results_df["Window"] == "D1"].iloc[0]
+d3_rows = results_df[results_df["Window"] == "D3"]
+d7_rows = results_df[results_df["Window"] == "D7"]
+d1_rows = results_df[results_df["Window"] == "D1"]
+d3_row = d3_rows.iloc[0] if len(d3_rows) > 0 else results_df.iloc[-1]
+d7_row = d7_rows.iloc[0] if len(d7_rows) > 0 else results_df.iloc[-1]
+d1_row = d1_rows.iloc[0] if len(d1_rows) > 0 else results_df.iloc[0]
 
 k1, k2, k3, k4 = st.columns(4)
 with k1:
@@ -258,10 +312,13 @@ with col3:
     st.plotly_chart(fig_retention, use_container_width=True)
 
 with col4:
-    # Predicted vs actual scatter for D3
-    sample_idx = np.random.RandomState(42).choice(len(y_true), min(3000, len(y_true)), replace=False)
-    y_sample = y_true[sample_idx]
-    pred_sample = preds["D3"][sample_idx]
+    # Predicted vs actual scatter — use best available window (D3 preferred)
+    scatter_window = "D3" if "D3" in preds else list(preds.keys())[-1]
+    y_w_true, y_w_pred = preds[scatter_window]
+    n_samp = min(3000, len(y_w_true))
+    sample_idx = np.random.RandomState(42).choice(len(y_w_true), n_samp, replace=False)
+    y_sample = y_w_true[sample_idx]
+    pred_sample = y_w_pred[sample_idx]
     payers_mask = y_sample > 0
 
     fig_scatter = go.Figure()
@@ -275,13 +332,13 @@ with col4:
         mode="markers", name="Payers",
         marker=dict(color="#2ecc71", size=4, opacity=0.6),
     ))
-    max_val = max(y_sample.max(), pred_sample.max())
+    max_val = max(float(y_sample.max()), float(pred_sample.max()))
     fig_scatter.add_trace(go.Scatter(
         x=[0, max_val], y=[0, max_val],
         mode="lines", name="Perfect", line=dict(color="gray", dash="dash"),
     ))
     fig_scatter.update_layout(
-        title="D3 Predicted vs Actual LTV30 (sample)",
+        title=f"{scatter_window} Predicted vs Actual LTV30 (sample)",
         xaxis_title="Predicted LTV30",
         yaxis_title="Actual LTV30",
         height=400,
@@ -302,7 +359,7 @@ st.dataframe(tbl, use_container_width=True, hide_index=True)
 # ── Insights ───────────────────────────────────────────────────────
 st.markdown("---")
 st.header("💡 Insights")
-st.markdown(f"- **D3 is the practical sweet spot** — retains {d3_row['Spearman Retention %']:.1f}% of D7 Spearman accuracy, enabling predictions **4 days earlier**")
+st.markdown(f"- **D3 is the practical sweet spot** — retains {d3_row['Spearman Retention %']:.1f}% of D7 Spearman accuracy, enabling predictions **4 days earlier** (based on actual D3 data)")
 st.markdown(f"- **D1 retains {d1_row['Spearman Retention %']:.1f}%** of D7 accuracy — sufficient for binary triage (likely payer vs unlikely)")
 st.markdown("- Diminishing returns after D5 — most predictive signal is captured by D3")
 st.markdown("### 🎯 Recommended Deployment")

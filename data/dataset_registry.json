@@ -55,6 +55,7 @@
     "3d_Cohort_Comparison": "cfm_pltv_train",
     "3e_Causal_Inference": "cfm_pltv_train",
     "3f_Seed_Optimization": "cfm_pltv_train",
-    "3g_Real_Time_Scoring": "cfm_pltv_train"
+    "3g_Real_Time_Scoring": "cfm_pltv_train",
+    "6_Summary": "cfm_pltv_train"
   }
 }

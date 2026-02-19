@@ -57,28 +57,6 @@ with col7:
 with col8:
     st.metric("Est. ROAS Improvement", "+20–40%", help="Combined initiatives vs D7-only baseline")
 
-# ── Framework journey ──────────────────────────────────────────────
-st.markdown("---")
-st.header("🗺️ Analysis Framework Journey")
-
-steps = [
-    ("🎯", "1. Decision Definition", "Defined `ltv30` prediction target, late payer label, and business framing for seed list generation."),
-    ("⚔️", "2. Features & Model", "Built XGBoost model on 4 feature groups (payment, gameplay, login, UA). Log1p target transform."),
-    ("📊", "3. Model Evaluation", "Validated on 2 OOT test sets. Outperforms all baselines. Stable across time periods."),
-    ("🎮", "4. Action & Simulation", "Simulated seed strategies. Enriched seeds (+ predicted late payers) improve whale capture."),
-    ("📉", "5. Cohort Stability", "Monitored payer rates, ARPU, and model Spearman ρ across weekly cohorts. No drift detected."),
-    ("🔍", "6. Late Payer Analysis", "Deep-dive on the D7=0 segment. Identified late payers as 30–40% of D30 revenue."),
-    ("📈", "7. Temporal Analysis", "Cohort evolution over launch week. D7/D30 ratio stable at ~39%."),
-    ("👥", "8. Cohort Comparison", "ARPU varies 2.7× across media sources. Apple Search Ads leads; Google Ads lags."),
-    ("🔬", "9. Causal Inference", "Engagement (games, active days) is the strongest non-payment predictor of late conversion."),
-    ("🌱", "10. Seed Optimization", "Enriched seed strategy improves whale capture without diluting average LTV."),
-    ("⚡", "11. Real-Time Scoring", "D3 model retains 97% accuracy — enables 4-day faster UA optimisation."),
-]
-
-for icon, title, desc in steps:
-    with st.expander(f"{icon} {title}", expanded=False):
-        st.markdown(desc)
-
 # ── Priority action matrix ─────────────────────────────────────────
 st.markdown("---")
 st.header("🚀 Priority Action Matrix")
