@@ -114,3 +114,39 @@ st.info(
     "💡 **Note:** Impact estimates are based on industry benchmarks and observational analysis. "
     "A/B tests are required to confirm causal effects. Confidence levels reflect data support strength."
 )
+
+# ── Whale Intelligence Overview ────────────────────────────────────
+st.markdown("---")
+st.header("🐋 Whale Intelligence — AI-Generated Analysis")
+st.markdown(
+    "A new suite of AI-generated analyses explores the **extreme revenue concentration** "
+    "in CrossFire Vietnam. Top 1% of users drive ~79% of revenue — these analyses focus on "
+    "identifying, retaining, and expanding the whale segment."
+)
+
+render_report_md(
+    REPORTS_DIR / "Whale_Analysis_Overview.md",
+    expander_label="📄 Whale Analysis Overview Report",
+    expanded=False,
+)
+
+whale_actions = pd.DataFrame([
+    {"Analysis": "🐋 Whale Segmentation", "Key Finding": "Top 1% = 79% of revenue; whales play 3.3× more games", "Action": "VIP onboarding within D1; whale-only UA seeds"},
+    {"Analysis": "⏱️ Time-to-First-Purchase", "Key Finding": "35% of payers convert D0; 78% by D3", "Action": "In-session offer trigger; D3 push for non-converters"},
+    {"Analysis": "📡 Channel × Whale Quality", "Key Finding": "Whale rate varies significantly by channel", "Action": "Report whale rate in dashboards; reallocate budget"},
+    {"Analysis": "📉 Churn Prediction", "Key Finding": "txn_cnt_d7 ≥ 2 is strongest retention signal", "Action": "Retention offer for churn_score > 0.7 payers"},
+    {"Analysis": "🎯 Skill-to-Spend", "Key Finding": "High-skill non-payers = best conversion targets", "Action": "Competitive/prestige offers for top-quartile K/D non-payers"},
+])
+st.dataframe(whale_actions, use_container_width=True, hide_index=True)
+
+col_l1, col_l2, col_l3, col_l4, col_l5 = st.columns(5)
+with col_l1:
+    st.page_link("pages/3h_Whale_Segmentation.py", label="🐋 Whale Segmentation")
+with col_l2:
+    st.page_link("pages/3i_Time_to_First_Purchase.py", label="⏱️ Time-to-Purchase")
+with col_l3:
+    st.page_link("pages/3j_Channel_Whale_Quality.py", label="📡 Channel Quality")
+with col_l4:
+    st.page_link("pages/3k_Churn_Prediction.py", label="📉 Churn Prediction")
+with col_l5:
+    st.page_link("pages/3l_Skill_Spend_Correlation.py", label="🎯 Skill-to-Spend")

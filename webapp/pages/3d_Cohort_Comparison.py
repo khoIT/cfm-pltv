@@ -13,7 +13,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shared import (
     render_sidebar, render_top_menu, render_report_md, convert_vnd, get_currency_info,
-    format_currency, DATA_DIR, REPORTS_DIR,
+    format_currency, DATA_DIR, REPORTS_DIR, list_analysis_datasets,
 )
 
 render_top_menu()
@@ -57,14 +57,6 @@ def compute_cohort_metrics(csv_path: str, file_mtime: float):
     return df, {"by_source": by_source, "by_os": by_os}, None
 
 
-def list_available_datasets():
-    datasets = {}
-    for f in DATA_DIR.glob("cfm_pltv*.csv"):
-        size_mb = f.stat().st_size / 1e6
-        datasets[f.stem] = {"path": str(f), "size_mb": size_mb, "mtime": f.stat().st_mtime}
-    return datasets
-
-
 # ── page ───────────────────────────────────────────────────────────
 st.title("👥 Cohort Comparison")
 st.markdown(
@@ -76,13 +68,12 @@ cur = get_currency_info()
 
 # ── Dataset selector ───────────────────────────────────────────────
 st.header("📂 Select Dataset")
-datasets = list_available_datasets()
+datasets, default_idx = list_analysis_datasets()
 if not datasets:
     st.error("No datasets found in data/ directory.")
     st.stop()
 
 ds_names = list(datasets.keys())
-default_idx = ds_names.index("cfm_pltv") if "cfm_pltv" in ds_names else 0
 col_ds1, col_ds2 = st.columns([2, 3])
 with col_ds1:
     chosen_ds = st.selectbox("Dataset", ds_names, index=default_idx, key="cohort_dataset",

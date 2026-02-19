@@ -218,6 +218,16 @@ def render_sidebar():
         "6_Summary"
     }
     is_pltv_page = current_page in pltv_pages
+
+    # Pages that belong to AI-Generated Reports section
+    ai_pages = {
+        "3h_Whale_Segmentation",
+        "3i_Time_to_First_Purchase",
+        "3j_Channel_Whale_Quality",
+        "3k_Churn_Prediction",
+        "3l_Skill_Spend_Correlation",
+    }
+    is_ai_page = current_page in ai_pages
     
     # ── Section A: Key Functions ──────────────────────────────────────
     st.sidebar.markdown('<h3 style="font-size: 18px;">🔧 Key Functions</h3>', unsafe_allow_html=True)
@@ -243,6 +253,15 @@ def render_sidebar():
     st.sidebar.page_link("pages/3e_Causal_Inference.py", label="🔬 Causal Inference")
     st.sidebar.page_link("pages/3f_Seed_Optimization.py", label="🌱 Seed Optimization")
     st.sidebar.page_link("pages/3g_Real_Time_Scoring.py", label="⚡ Real-Time Scoring")
+
+    # ── Section C: AI-Generated Reports ──────────────────────────────
+    st.sidebar.markdown('<h2 style="font-size: 18px;">🤖 Whales Focused Reports</h2>', unsafe_allow_html=True)
+    with st.sidebar.expander("🐋 Whale Intelligence", expanded=is_ai_page):
+        st.page_link("pages/3h_Whale_Segmentation.py", label="🐋 Whale Segmentation")
+        st.page_link("pages/3i_Time_to_First_Purchase.py", label="⏱️ Time-to-First-Purchase")
+        st.page_link("pages/3j_Channel_Whale_Quality.py", label="📡 Channel × Whale Quality")
+        st.page_link("pages/3k_Churn_Prediction.py", label="📉 Churn Prediction")
+        st.page_link("pages/3l_Skill_Spend_Correlation.py", label="🎯 Skill-to-Spend")
 
     # ── Currency selector ─────────────────────────────────────────
     st.sidebar.markdown("---")
@@ -395,6 +414,31 @@ def get_currency_info() -> dict:
         "symbol": "₫" if currency == "VND" else "$",
         "label": "VND" if currency == "VND" else "USD",
     }
+
+
+# ---------------------------------------------------------------------------
+# Dataset listing helpers for analysis pages
+# ---------------------------------------------------------------------------
+def list_analysis_datasets(default: str = "cfm_pltv_train") -> tuple:
+    """
+    Return (datasets_dict, default_idx) for analysis pages.
+    Excludes D135 part files (those are only for Real-Time Scoring).
+    Defaults to cfm_pltv_train.
+    """
+    datasets = {}
+    for f in sorted(DATA_DIR.glob("cfm_pltv*.csv")):
+        if "D135_part" in f.stem:
+            continue  # D135 parts are only for Real-Time Scoring
+        size_mb = f.stat().st_size / 1e6
+        datasets[f.stem] = {"path": str(f), "size_mb": size_mb, "mtime": f.stat().st_mtime}
+    names = list(datasets.keys())
+    if default in names:
+        idx = names.index(default)
+    elif names:
+        idx = 0
+    else:
+        idx = 0
+    return datasets, idx
 
 
 # ---------------------------------------------------------------------------
