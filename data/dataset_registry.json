@@ -1,0 +1,60 @@
+{
+  "datasets": {
+    "cfm_pltv_train": {
+      "name": "Training (default)",
+      "filename": "cfm_pltv_train.csv",
+      "rows": 1400770,
+      "columns": 37,
+      "source_file": "legacy",
+      "split_info": "auto-migrated",
+      "created_at": "2026-02-18T22:16:13.104022",
+      "size_mb": 287.0
+    },
+    "cfm_pltv_test1": {
+      "name": "Test 1 \u2014 OOT Near",
+      "filename": "cfm_pltv_test1.csv",
+      "rows": 300165,
+      "columns": 37,
+      "source_file": "legacy",
+      "split_info": "auto-migrated",
+      "created_at": "2026-02-18T22:16:13.215449",
+      "size_mb": 60.6
+    },
+    "cfm_pltv_test2": {
+      "name": "Test 2 \u2014 OOT Far",
+      "filename": "cfm_pltv_test2.csv",
+      "rows": 300165,
+      "columns": 37,
+      "source_file": "legacy",
+      "split_info": "auto-migrated",
+      "created_at": "2026-02-18T22:16:13.326638",
+      "size_mb": 58.6
+    },
+    "cfm_pltv_dec_16_feb_18_train": {
+      "name": "cfm_pltv_Dec_16_Feb_18_train",
+      "filename": "cfm_pltv_dec_16_feb_18_train.csv",
+      "rows": 2525343,
+      "columns": 37,
+      "source_file": "cfm_pltv_Dec_16_Feb_18.csv",
+      "split_info": "2,525,343 rows (100%)",
+      "created_at": "2026-02-18T22:36:11.034420",
+      "size_mb": 503.5
+    }
+  },
+  "page_bindings": {
+    "1_Decision_Definition": "cfm_pltv_dec_16_feb_18_train",
+    "3c_Temporal_Analysis": "cfm_pltv_train",
+    "0_Data_Upload": "cfm_pltv_train",
+    "2_Features_and_Model": "cfm_pltv_train",
+    "3_Evaluation_and_Insights": "cfm_pltv_test1",
+    "3b_Late_Payer_Analysis": "cfm_pltv_test1",
+    "4_Action_and_Simulation": "cfm_pltv_train",
+    "5_Feedback_and_Learning": "cfm_pltv_train",
+    "6_Diagnostics": "cfm_pltv_train",
+    "7_Notebooks": "cfm_pltv_train",
+    "3d_Cohort_Comparison": "cfm_pltv_train",
+    "3e_Causal_Inference": "cfm_pltv_train",
+    "3f_Seed_Optimization": "cfm_pltv_train",
+    "3g_Real_Time_Scoring": "cfm_pltv_train"
+  }
+}

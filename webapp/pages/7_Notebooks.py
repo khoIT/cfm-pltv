@@ -118,8 +118,6 @@ with st.expander("💡 How to Use", expanded=False):
 To **execute cells and see live results**, use one of the options above.
 """)
 
-st.markdown("---")
-
 # Load notebook
 nb_path = NOTEBOOK_DIR / selected_nb
 
@@ -143,8 +141,6 @@ except Exception as e:
     st.error(f"❌ Error loading notebook: {str(e)}")
     st.stop()
 
-st.markdown("---")
-
 # Render notebook cells
 st.markdown("### 📄 Notebook Content")
 
@@ -156,8 +152,6 @@ with col_ctrl2:
     show_outputs = st.checkbox("Show Outputs", value=True)
 with col_ctrl3:
     expand_all = st.checkbox("Expand All Cells", value=False)
-
-st.markdown("---")
 
 # Render each cell
 for idx, cell in enumerate(nb_content.get('cells', [])):
@@ -218,4 +212,3 @@ for idx, cell in enumerate(nb_content.get('cells', [])):
                             traceback = '\n'.join(output.get('traceback', []))
                             st.code(traceback, language='python')
         
-        st.markdown("---")

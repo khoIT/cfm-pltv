@@ -16,7 +16,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shared import (
     render_sidebar, render_top_menu, get_data, get_test_data, convert_vnd, get_currency_info,
-    format_currency, REPORTS_DIR,
+    format_currency, REPORTS_DIR, DATA_DIR,
     BASELINE_HEURISTICS, compute_baseline_ranking, TEST_DATASETS,
 )
 
@@ -49,6 +49,15 @@ def revenue_capture_at_k(y_true, order, k_pct):
     return top_rev / total if total > 0 else 0.0
 
 
+def list_available_datasets():
+    """List CSV files in the data directory."""
+    datasets = {}
+    for f in DATA_DIR.glob("cfm_pltv*.csv"):
+        size_mb = f.stat().st_size / 1e6
+        datasets[f.stem] = {"path": str(f), "size_mb": size_mb, "mtime": f.stat().st_mtime}
+    return datasets
+
+
 # ── page ───────────────────────────────────────────────────────────
 st.title("🔍 Late Payer Analysis (rev_d7 = 0)")
 
@@ -66,22 +75,32 @@ st.markdown(
 )
 
 # =====================================================================
-# TEST DATASET SELECTOR
+# DATASET SELECTOR
 # =====================================================================
-st.header("🧪 Select Test Dataset")
-test_options = list(TEST_DATASETS.keys())
-col_sel1, col_sel2 = st.columns([2, 3])
-with col_sel1:
-    test_choice = st.radio(
-        "Test dataset", test_options, index=0, key="lpa_test_choice",
-    )
-with col_sel2:
-    info = TEST_DATASETS[test_choice]
-    st.markdown(f"**{test_choice}**")
-    st.markdown(f"- 📅 Dates: `{info['dates']}`")
-    st.markdown(f"- 📦 Rows: ~{info['rows']}")
+st.header("📂 Select Dataset")
+datasets = list_available_datasets()
 
-df_eval = get_test_data(test_choice)
+if not datasets:
+    st.error("No datasets found in data/ directory.")
+    st.stop()
+
+ds_names = list(datasets.keys())
+default_idx = ds_names.index("cfm_pltv") if "cfm_pltv" in ds_names else 0
+
+col_ds1, col_ds2 = st.columns([2, 3])
+with col_ds1:
+    chosen_ds = st.selectbox(
+        "Dataset", ds_names, index=default_idx, key="lpa_dataset",
+        help="Choose which dataset to analyze"
+    )
+with col_ds2:
+    ds_info = datasets[chosen_ds]
+    st.markdown(f"**{chosen_ds}** — {ds_info['size_mb']:.1f} MB")
+
+# Load dataset
+ds_path = ds_info["path"]
+df_eval = pd.read_csv(ds_path, low_memory=False)
+st.success(f"✅ Loaded **{len(df_eval):,}** rows from {chosen_ds}")
 
 # ── model predictions ─────────────────────────────────────────────
 use_live = "model" in st.session_state
@@ -146,7 +165,7 @@ with kpi4:
     avg_ltv_payers = y_true_seg[y_true_seg > 0].mean() if payers_in_seg > 0 else 0
     st.metric("Avg LTV30 (late payers)", format_currency(avg_ltv_payers, cur["code"]))
 
-st.caption(f"Evaluating on **{test_choice}** — **{n_zero:,}** users with rev_d7 = 0 "
+st.caption(f"Evaluating on **{chosen_ds}** — **{n_zero:,}** users with rev_d7 = 0 "
            f"(out of {n_all:,} total)")
 
 if n_zero < 100:

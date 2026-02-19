@@ -1,0 +1,138 @@
+"""
+Page 6 — pLTV 30d Analysis Summary & Next Steps
+Summarises all analytical activities, model performance, business impacts, and recommended actions.
+"""
+import streamlit as st
+import pandas as pd
+import numpy as np
+from pathlib import Path
+import plotly.express as px
+import plotly.graph_objects as go
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from shared import (
+    render_sidebar, render_top_menu, render_report_md,
+    get_currency_info, format_currency, convert_vnd,
+    REPORTS_DIR,
+)
+
+render_top_menu()
+render_sidebar()
+
+st.title("📋 pLTV 30d Analysis — Summary & Next Steps")
+st.markdown(
+    "A consolidated view of all analytical work, model performance, business impacts, "
+    "and recommended actions for the CrossFire Mobile pLTV prediction system."
+)
+
+# ── Full report expander ───────────────────────────────────────────
+render_report_md(
+    REPORTS_DIR / "pLTV_Summary.md",
+    expander_label="📄 Full Summary Report",
+    expanded=True,
+)
+
+# ── Quick-reference KPI cards ──────────────────────────────────────
+st.markdown("---")
+st.header("🏆 Key Results at a Glance")
+
+col1, col2, col3, col4 = st.columns(4)
+with col1:
+    st.metric("Training Users", "~870k", help="Dec 16 2025 – Jan 8 2026")
+with col2:
+    st.metric("Spearman ρ (Test 1)", "~0.85+", help="XGBoost vs rev_d7 baseline ~0.75")
+with col3:
+    st.metric("Lift@10%", "~55–65%", help="Top 10% users capture 55–65% of revenue")
+with col4:
+    st.metric("Late Payer Rate", "~3%", help="Users who pay only after D7 — core ML opportunity")
+
+col5, col6, col7, col8 = st.columns(4)
+with col5:
+    st.metric("D7/D30 Revenue Ratio", "~39%", help="D7 revenue is only 39% of D30 — late payers matter")
+with col6:
+    st.metric("ARPU Spread (channels)", "2.7×", help="Apple Search Ads vs Google Ads ARPU gap")
+with col7:
+    st.metric("D3 Accuracy Retention", "~97%", help="D3 model retains 97% of D7 Spearman ρ")
+with col8:
+    st.metric("Est. ROAS Improvement", "+20–40%", help="Combined initiatives vs D7-only baseline")
+
+# ── Framework journey ──────────────────────────────────────────────
+st.markdown("---")
+st.header("🗺️ Analysis Framework Journey")
+
+steps = [
+    ("🎯", "1. Decision Definition", "Defined `ltv30` prediction target, late payer label, and business framing for seed list generation."),
+    ("⚔️", "2. Features & Model", "Built XGBoost model on 4 feature groups (payment, gameplay, login, UA). Log1p target transform."),
+    ("📊", "3. Model Evaluation", "Validated on 2 OOT test sets. Outperforms all baselines. Stable across time periods."),
+    ("🎮", "4. Action & Simulation", "Simulated seed strategies. Enriched seeds (+ predicted late payers) improve whale capture."),
+    ("📉", "5. Cohort Stability", "Monitored payer rates, ARPU, and model Spearman ρ across weekly cohorts. No drift detected."),
+    ("🔍", "6. Late Payer Analysis", "Deep-dive on the D7=0 segment. Identified late payers as 30–40% of D30 revenue."),
+    ("📈", "7. Temporal Analysis", "Cohort evolution over launch week. D7/D30 ratio stable at ~39%."),
+    ("👥", "8. Cohort Comparison", "ARPU varies 2.7× across media sources. Apple Search Ads leads; Google Ads lags."),
+    ("🔬", "9. Causal Inference", "Engagement (games, active days) is the strongest non-payment predictor of late conversion."),
+    ("🌱", "10. Seed Optimization", "Enriched seed strategy improves whale capture without diluting average LTV."),
+    ("⚡", "11. Real-Time Scoring", "D3 model retains 97% accuracy — enables 4-day faster UA optimisation."),
+]
+
+for icon, title, desc in steps:
+    with st.expander(f"{icon} {title}", expanded=False):
+        st.markdown(desc)
+
+# ── Priority action matrix ─────────────────────────────────────────
+st.markdown("---")
+st.header("🚀 Priority Action Matrix")
+
+actions = pd.DataFrame([
+    {"#": 1, "Action": "Deploy model-ranked seed lists to all networks", "Timeline": "Week 1–2", "Impact": "High", "Effort": "Low", "Confidence": "High"},
+    {"#": 2, "Action": "A/B test enriched seed vs D7-only seed", "Timeline": "Week 1–2", "Impact": "High", "Effort": "Medium", "Confidence": "High"},
+    {"#": 3, "Action": "Weekly Spearman ρ drift monitoring", "Timeline": "Week 1–2", "Impact": "Medium", "Effort": "Low", "Confidence": "High"},
+    {"#": 4, "Action": "Build D3 feature aggregation SQL pipeline", "Timeline": "Month 1", "Impact": "High", "Effort": "Medium", "Confidence": "Medium"},
+    {"#": 5, "Action": "Deploy D3 scoring for faster bid optimisation", "Timeline": "Month 1", "Impact": "High", "Effort": "High", "Confidence": "Medium"},
+    {"#": 6, "Action": "Channel-specific seed lists per media source", "Timeline": "Month 1", "Impact": "Medium", "Effort": "Low", "Confidence": "High"},
+    {"#": 7, "Action": "Design engagement A/B test (D7 non-payers)", "Timeline": "Month 1", "Impact": "Medium", "Effort": "Medium", "Confidence": "Low"},
+    {"#": 8, "Action": "Monthly model retraining cadence", "Timeline": "Month 2–3", "Impact": "Medium", "Effort": "Low", "Confidence": "High"},
+    {"#": 9, "Action": "Multi-window ensemble (D1+D3+D7)", "Timeline": "Month 2–3", "Impact": "Medium", "Effort": "High", "Confidence": "Medium"},
+    {"#": 10, "Action": "Real-time scoring API (<24h from install)", "Timeline": "Q2+", "Impact": "High", "Effort": "Very High", "Confidence": "Medium"},
+])
+
+# Color-code by impact
+def highlight_impact(row):
+    color = {"High": "background-color: #d4edda", "Medium": "background-color: #fff3cd", "Low": "background-color: #f8d7da"}.get(row["Impact"], "")
+    return [color] * len(row)
+
+st.dataframe(
+    actions.style.apply(highlight_impact, axis=1),
+    use_container_width=True,
+    hide_index=True,
+)
+
+# ── Business impact chart ──────────────────────────────────────────
+st.markdown("---")
+st.header("💰 Estimated Business Impact by Initiative")
+
+impact_data = pd.DataFrame([
+    {"Initiative": "Model seeds vs D7-only", "ROAS Uplift (%)": 15, "Confidence": "High"},
+    {"Initiative": "Enriched seeds (+ late payers)", "ROAS Uplift (%)": 7, "Confidence": "High"},
+    {"Initiative": "Channel budget reallocation", "ROAS Uplift (%)": 20, "Confidence": "Medium"},
+    {"Initiative": "D3 faster optimisation", "ROAS Uplift (%)": 5, "Confidence": "Medium"},
+    {"Initiative": "Engagement nudges (A/B)", "ROAS Uplift (%)": 2, "Confidence": "Low"},
+])
+
+color_map = {"High": "#2ecc71", "Medium": "#f39c12", "Low": "#e74c3c"}
+fig = px.bar(
+    impact_data, x="Initiative", y="ROAS Uplift (%)",
+    color="Confidence",
+    color_discrete_map=color_map,
+    title="Estimated ROAS Uplift by Initiative (% improvement vs D7-only baseline)",
+    text="ROAS Uplift (%)",
+)
+fig.update_traces(texttemplate="+%{text}%", textposition="outside")
+fig.update_layout(height=420, xaxis_tickangle=-20, legend_title="Confidence Level",
+                  yaxis_title="Estimated ROAS Uplift (%)")
+st.plotly_chart(fig, use_container_width=True)
+
+st.info(
+    "💡 **Note:** Impact estimates are based on industry benchmarks and observational analysis. "
+    "A/B tests are required to confirm causal effects. Confidence levels reflect data support strength."
+)

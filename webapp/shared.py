@@ -146,79 +146,128 @@ def render_top_menu():
         </style>
     """, unsafe_allow_html=True)
     
-    # Create top bar with title, currency, and navigation
-    col1, col2, col3 = st.columns([4, 1, 1])
+    # Top bar — title only
+    st.markdown("### 🔥 CrossFire Decision Intelligence")
     
-    with col1:
-        st.markdown("### 🔥 CrossFire Decision Intelligence")
-    
-    with col2:
-        st.markdown("")
-    
-    with col3:
-        currency = st.selectbox(
-            "💱",
-            ["🇻🇳 VND (₫)", "💵 USD ($)"],
-            index=0,
-            label_visibility="collapsed",
-            help=f"Currency: VND ↔ USD (1 USD ≈ ₫{VND_TO_USD_RATE:,.0f})"
-        )
-        st.session_state["currency"] = "VND" if "VND" in currency else "USD"
-    
+# ---------------------------------------------------------------------------
+# Shared report renderer — handles markdown with embedded local images
+# ---------------------------------------------------------------------------
+def render_report_md(report_path, expander_label: str = "📄 Full Report", expanded: bool = False):
+    """
+    Display a markdown report file inside an expander.
+    Handles embedded image references (![alt](plots/foo.png)) by rendering
+    them as st.image() calls so they display correctly in Streamlit.
+    """
+    import re
+    if not Path(report_path).exists():
+        return
+    with st.expander(expander_label, expanded=expanded):
+        report_text = Path(report_path).read_text(encoding="utf-8")
+        parts = re.split(r'!\[([^\]]*)\]\(([^\)]+)\)', report_text)
+        i = 0
+        while i < len(parts):
+            if i % 3 == 0:
+                if parts[i].strip():
+                    st.markdown(parts[i])
+            elif i % 3 == 1:
+                alt_text = parts[i]
+                img_rel = parts[i + 1]
+                img_path = Path(report_path).parent / img_rel
+                if img_path.exists():
+                    st.image(str(img_path), caption=alt_text, use_container_width=True)
+                else:
+                    st.caption(f"_(chart not found: {img_rel})_")
+                i += 1  # skip the path part
+            i += 1
+
+
 # ---------------------------------------------------------------------------
 # Sidebar (called from every page)
 # ---------------------------------------------------------------------------
 def render_sidebar():
     """Render the shared sidebar controls: custom navigation with emojis, training data config."""
-    # Custom sidebar navigation with emojis
-    st.sidebar.markdown("### 🔥 Navigation")
-    sidebar_pages = [
-        ("📤 Data Upload", "pages/0_Data_Upload.py"),
-        ("🎯 Decision Definition", "pages/1_Decision_Definition.py"),
-        ("⚔️ Features and Model", "pages/2_Features_and_Model.py"),
-        ("📊 Evaluation and Insights", "pages/3_Evaluation_and_Insights.py"),
-        ("🔍 Late Payer Analysis", "pages/3b_Late_Payer_Analysis.py"),
-        ("🎮 Action and Simulation", "pages/4_Action_and_Simulation.py"),
-        ("🔄 Feedback and Learning", "pages/5_Feedback_and_Learning.py"),
-        ("🔬 Diagnostics", "pages/6_Diagnostics.py"),
-        ("📓 Notebooks", "pages/7_Notebooks.py"),
-    ]
-    for label, page_path in sidebar_pages:
-        st.sidebar.page_link(page_path, label=label)
+    # Increase sidebar font size (+2px)
+    st.markdown("""
+        <style>
+        .st-emotion-cache-1gwvy71 *,
+        .stSidebar *,
+        [data-testid="stSidebar"] *,
+        [data-testid="stSidebarContent"] *,
+        [data-testid="stSidebarUserContent"] * {
+            font-size: 16px !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    # Detect current page to determine if pLTV 30d Analysis should be expanded
+    import inspect
+    current_page = "unknown"
+    for frame_info in inspect.stack():
+        fname = Path(frame_info.filename).stem
+        if fname and (fname[0].isdigit() or fname.startswith("Home")):
+            current_page = fname
+            break
     
+    # Pages that belong to pLTV 30d Analysis section
+    pltv_pages = {
+        "1_Decision_Definition",
+        "2_Features_and_Model", 
+        "3_Evaluation_and_Insights",
+        "4_Action_and_Simulation",
+        "5_Feedback_and_Learning",
+        "6_Summary"
+    }
+    is_pltv_page = current_page in pltv_pages
+    
+    # ── Section A: Key Functions ──────────────────────────────────────
+    st.sidebar.markdown('<h3 style="font-size: 18px;">🔧 Key Functions</h3>', unsafe_allow_html=True)
+    st.sidebar.page_link("pages/0_Data_Upload.py", label="📤 Data Upload")
+    st.sidebar.page_link("pages/7_Notebooks.py", label="📓 Notebooks")
+    
+    # ── Section B: Analysis Reports ───────────────────────────────────
+    st.sidebar.markdown('<h3 style="font-size: 18px;">📊 Analysis Reports</h3>', unsafe_allow_html=True)
+    
+    # pLTV 30d Analysis (expand if on a child page, collapse otherwise)
+    with st.sidebar.expander("📈 pLTV 30d Analysis", expanded=is_pltv_page):
+        st.page_link("pages/1_Decision_Definition.py", label="🎯 Definition")
+        st.page_link("pages/2_Features_and_Model.py", label="  ⚔️ Features & Model")
+        st.page_link("pages/3_Evaluation_and_Insights.py", label="  📊 Model Evaluation")
+        st.page_link("pages/4_Action_and_Simulation.py", label="  🎮 Action & Simulation")
+        st.page_link("pages/5_Feedback_and_Learning.py", label="  📉 Cohort Stability")
+        st.page_link("pages/6_Summary.py", label="  � Summary & Next Steps")
+    
+    # Standalone reports
+    st.sidebar.page_link("pages/3b_Late_Payer_Analysis.py", label="🔍 Late Payer Analysis")
+    st.sidebar.page_link("pages/3c_Temporal_Analysis.py", label="📈 Temporal Analysis")
+    st.sidebar.page_link("pages/3d_Cohort_Comparison.py", label="👥 Media Cohort Comparison")
+    st.sidebar.page_link("pages/3e_Causal_Inference.py", label="🔬 Causal Inference")
+    st.sidebar.page_link("pages/3f_Seed_Optimization.py", label="🌱 Seed Optimization")
+    st.sidebar.page_link("pages/3g_Real_Time_Scoring.py", label="⚡ Real-Time Scoring")
+
+    # ── Currency selector ─────────────────────────────────────────
     st.sidebar.markdown("---")
-    st.sidebar.markdown("### ⚙️ Training Data")
-
-    train_path = DATA_DIR / "cfm_pltv_train.csv"
-    if not train_path.exists():
-        st.sidebar.warning("⚠️ No training data found")
-        st.sidebar.info("📤 Use the **Data Upload** page to upload your dataset")
-        st.session_state["data_missing"] = True
-        return
-
-    st.session_state["data_missing"] = False
-    train_size = os.path.getsize(train_path) / 1e6
-    
-    # Estimate row count from file size (avoid opening the file to prevent lock conflicts)
-    # Use cached actual count from a previous get_data() call if available
-    # Rough estimate: ~200 bytes per row for this dataset
-    actual_rows = max(10_000, int(train_size * 1e6 / 200))
-    
-    st.sidebar.caption(f"Source: `cfm_pltv_train.csv` ({train_size:.0f} MB, {actual_rows:,} rows)")
-
-    max_rows = st.sidebar.slider(
-        "Training rows to load",
-        min_value=10_000,
-        max_value=actual_rows,
-        value=actual_rows,
-        step=10_000,
-        help=f"Training data contains **{actual_rows:,}** rows.  \n"
-             "Adjust if you want to load fewer rows for faster iteration.",
+    currency = st.sidebar.selectbox(
+        "💱 Currency",
+        ["🇻🇳 VND (₫)", "💵 USD ($)"],
+        index=0 if st.session_state.get("currency", "VND") == "VND" else 1,
+        help=f"VND ↔ USD (1 USD ≈ ₫{VND_TO_USD_RATE:,.0f})"
     )
-    st.session_state["max_rows"] = max_rows
-    st.session_state["dataset_choice"] = "real"
+    st.session_state["currency"] = "VND" if "VND" in currency else "USD"
 
-    st.sidebar.caption(f"📊 Loading up to **{max_rows:,}** training rows")
+    # ── Dataset Registry sidebar ──────────────────────────────────
+    from dataset_registry import render_dataset_sidebar, migrate_existing_datasets
+    # Auto-register any legacy CSV files on first run
+    migrate_existing_datasets()
+    # Determine current page ID from the call stack
+    import inspect
+    page_id = "unknown"
+    for frame_info in inspect.stack():
+        fname = Path(frame_info.filename).stem
+        # Match known page patterns (e.g., "1_Decision_Definition", "3b_Late_Payer_Analysis")
+        if fname and (fname[0].isdigit() or fname.startswith("Home")):
+            page_id = fname
+            break
+    render_dataset_sidebar(page_id)
 
 
 # ---------------------------------------------------------------------------
@@ -249,12 +298,25 @@ def load_data(max_rows: int = 50_000, file_mtime: float = 0.0) -> pd.DataFrame:
 
 
 def get_data() -> pd.DataFrame:
-    """Load training data using current session settings."""
+    """Load data using current session settings.
+    Prefers the Dataset Registry binding; falls back to legacy cfm_pltv_train.csv."""
     mr = st.session_state.get("max_rows", 50_000)
+
+    # Try Dataset Registry first
+    ds_id = st.session_state.get("current_dataset_id")
+    if ds_id:
+        from dataset_registry import load_dataset
+        try:
+            df = load_dataset(ds_id, max_rows=mr)
+            st.session_state["actual_row_count"] = len(df)
+            return df
+        except FileNotFoundError:
+            pass  # Fall through to legacy loader
+
+    # Legacy fallback
     csv_path = DATA_DIR / "cfm_pltv_train.csv"
     mtime = os.path.getmtime(csv_path) if csv_path.exists() else 0.0
     df = load_data(mr, file_mtime=mtime)
-    # Store actual row count for sidebar display
     st.session_state["actual_row_count"] = len(df)
     return df
 

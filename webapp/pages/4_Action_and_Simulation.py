@@ -14,9 +14,18 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shared import (
     render_sidebar, render_top_menu, get_data, get_test_data, format_currency, convert_vnd,
-    get_currency_info, REPORTS_DIR,
+    get_currency_info, REPORTS_DIR, DATA_DIR,
     BASELINE_HEURISTICS, compute_baseline_ranking, TEST_DATASETS,
 )
+
+def list_available_datasets():
+    """List CSV files in the data directory."""
+    datasets = {}
+    for f in DATA_DIR.glob("cfm_pltv*.csv"):
+        size_mb = f.stat().st_size / 1e6
+        datasets[f.stem] = {"path": str(f), "size_mb": size_mb, "mtime": f.stat().st_mtime}
+    return datasets
+
 
 render_top_menu()
 render_sidebar()
@@ -37,29 +46,32 @@ if report_path.exists():
         st.markdown(report_path.read_text(encoding="utf-8"))
 
 # ═════════════════════════════════════════════════════════════════════
-# TEST DATASET SELECTOR
+# DATASET SELECTOR
 # ═════════════════════════════════════════════════════════════════════
-st.header("🧪 Select Test Dataset for Simulation")
-st.markdown("Choose which **out-of-time holdout** to simulate seed selection on.")
+st.header("📂 Select Dataset for Simulation")
+datasets = list_available_datasets()
 
-test_options = list(TEST_DATASETS.keys())
-col_s1, col_s2 = st.columns([2, 3])
-with col_s1:
-    test_choice = st.radio(
-        "Test dataset",
-        test_options,
-        index=0,
-        key="action_test_choice",
+if not datasets:
+    st.error("No datasets found in data/ directory.")
+    st.stop()
+
+ds_names = list(datasets.keys())
+default_idx = ds_names.index("cfm_pltv") if "cfm_pltv" in ds_names else 0
+
+col_ds1, col_ds2 = st.columns([2, 3])
+with col_ds1:
+    chosen_ds = st.selectbox(
+        "Dataset", ds_names, index=default_idx, key="action_dataset",
+        help="Choose which dataset to simulate on"
     )
-with col_s2:
-    tinfo = TEST_DATASETS[test_choice]
-    st.markdown(f"**{test_choice}**")
-    st.markdown(f"- 📅 Dates: `{tinfo['dates']}`")
-    st.markdown(f"- 📦 Rows: ~{tinfo['rows']}")
-    st.markdown(f"- 💡 {tinfo['description']}")
+with col_ds2:
+    ds_info = datasets[chosen_ds]
+    st.markdown(f"**{chosen_ds}** — {ds_info['size_mb']:.1f} MB")
 
-df_sim = get_test_data(test_choice)
-st.success(f"✅ Simulating on **{test_choice}** — {len(df_sim):,} rows")
+# Load dataset
+ds_path = ds_info["path"]
+df_sim = pd.read_csv(ds_path, low_memory=False)
+st.success(f"✅ Loaded **{len(df_sim):,}** rows from {chosen_ds}")
 
 # ── model predictions ─────────────────────────────────────────────
 if "model" in st.session_state:

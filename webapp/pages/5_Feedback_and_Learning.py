@@ -1,5 +1,5 @@
 """
-Page 5 — Feedback & Learning
+Page 5 — Cohort Stability
 Time dynamics, robustness/stability checks, and A/B test planning.
 """
 import streamlit as st
@@ -16,7 +16,7 @@ from shared import render_sidebar, render_top_menu, get_data, format_currency, c
 render_top_menu()
 render_sidebar()
 
-st.title("🔄 Feedback & Learning")
+st.title("� Cohort Stability")
 
 if st.session_state.get("data_missing", False):
     st.warning("⚠️ No training data found")
