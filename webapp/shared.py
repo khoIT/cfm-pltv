@@ -156,7 +156,7 @@ def render_report_md(report_path, expander_label: str = "📄 Full Report", expa
                 img_rel = parts[i + 1]
                 img_path = Path(report_path).parent / img_rel
                 if img_path.exists():
-                    st.image(str(img_path), caption=alt_text, use_container_width=True)
+                    st.image(str(img_path), caption=alt_text, width=700)
                 else:
                     st.caption(f"_(chart not found: {img_rel})_")
                 i += 1  # skip the path part

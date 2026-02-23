@@ -1,15 +1,15 @@
 # Synthesis Summary — CFM pLTV Analytical Studies
 
 ## Overview
-Five analytical studies were conducted on the CFM pLTV dataset (1,038,540 users, install dates Dec 16-22, 2025)
+Five analytical studies were conducted on the CFM pLTV dataset (1,655,607 users, install dates Dec 16-22, 2025)
 to inform UA strategy, model deployment, and product decisions.
 
 ## Study Results at a Glance
 
 | # | Study | Key Finding | Business Impact |
 |---|-------|-------------|-----------------|
-| 1 | **Temporal Analysis** | Launch-day users differ from steady-state; D7 captures ~39% of D30 revenue | Time UA investment for post-launch quality users |
-| 2 | **Media Cohort Comparison** | ARPU varies 2-3x across media sources | Reallocate budget to highest-ARPU channels |
+| 1 | **Temporal Analysis** | Launch-day users differ from steady-state; D7 captures ~28% of D30 revenue | Time UA investment for post-launch quality users |
+| 2 | **Cohort Comparison** | ARPU varies 2-3x across media sources | Reallocate budget to highest-ARPU channels |
 | 3 | **Causal Inference** | Engagement (games, active days) is strongest predictor of late conversion | Design engagement nudges for D7 non-payers |
 | 4 | **Seed Optimization** | Enriched seeds (+late payers) improve whale capture without diluting quality | Implement enriched seed lists for all networks |
 | 5 | **Real-Time Scoring** | D3 model retains ~97% of D7 accuracy | Deploy D3 scoring for 4-day faster optimization |
@@ -56,7 +56,7 @@ to inform UA strategy, model deployment, and product decisions.
 10. Extend data window to 2+ months for seasonal analysis
 
 ## Data & Methodology Notes
-- All analyses use the full CFM dataset: 1,038,540 users
+- All analyses use the full CFM dataset: 1,655,607 users
 - Install dates: Dec 16-22, 2025 (first week of launch)
 - All revenue in VND (₫); 1 USD ≈ ₫24,000
 - D1/D3/D5 models are simulated (scale D7 features); production needs actual shorter-window SQL

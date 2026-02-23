@@ -51,25 +51,25 @@ FROM cfm_pltv_features
 ### Strategy Comparison
 | Strategy | Seed Size | Avg LTV30 (₫) | Payer Rate | Whale Capture | Total Revenue (₫) |
 |----------|-----------|----------------|------------|---------------|-------------------|
-| D7 Payers Only | 49,403 | 12,983,475 | 100.0% | 72.9% | 641,422,618,800 |
-| D7 Payers + Top 5% Late | 98,859 | 7,649,862 | 58.3% | 81.1% | 756,257,660,600 |
-| Top 10% by rev_d7 | 103,854 | 6,431,754 | 49.7% | 74.7% | 667,963,424,000 |
-| D30 Payers (Oracle) | 80,184 | 12,555,203 | 100.0% | 100.0% | 1,006,726,369,600 |
+| D7 Payers Only | 59,266 | 488,548 | 100.0% | 68.3% | 28,954,305,000 |
+| D7 Payers + Top 5% Late | 139,083 | 234,824 | 51.6% | 78.2% | 32,659,984,000 |
+| Top 10% by rev_d7 | 165,560 | 179,919 | 37.6% | 70.3% | 29,787,351,000 |
+| D30 Payers (Oracle) | 103,981 | 396,456 | 100.0% | 100.0% | 41,223,864,000 |
 
 ### 1. Enriched Seed Adds Volume Without Diluting Quality
-- D7 Payers Only: **49,403** users, avg LTV ₫12,983,475
-- Enriched (+late payers): **98,859** users, avg LTV ₫7,649,862
-- Size increase: **+49,456** users (+100%)
+- D7 Payers Only: **59,266** users, avg LTV ₫488,548
+- Enriched (+late payers): **139,083** users, avg LTV ₫234,824
+- Size increase: **+79,817** users (+135%)
 
 ### 2. Whale Capture Improvement
-- D7 Payers Only captures **72.9%** of whales
-- Enriched seed captures **81.1%** of whales
+- D7 Payers Only captures **68.3%** of whales
+- Enriched seed captures **78.2%** of whales
 - Oracle captures **100.0%** — the theoretical maximum
 
 ### 3. Revenue Gap to Oracle
-- D7 Payers: ₫641,422,618,800 total revenue in seed
-- Oracle: ₫1,006,726,369,600 total revenue
-- Gap: ₫365,303,750,800 revenue missed by D7-only approach
+- D7 Payers: ₫28,954,305,000 total revenue in seed
+- Oracle: ₫41,223,864,000 total revenue
+- Gap: ₫12,269,559,000 revenue missed by D7-only approach
 
 ## Business Impact & Next Actions
 

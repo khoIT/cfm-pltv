@@ -13,7 +13,16 @@ warnings.filterwarnings("ignore")
 
 # ── Paths ──────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_PATH = BASE_DIR / "data" / "cfm_pltv.csv"
+# Try multiple data file names in order of preference
+_candidates = ["cfm_pltv.csv", "cfm_train.csv", "cfm_pltv_2025_12_16.csv"]
+DATA_PATH = None
+for _c in _candidates:
+    _p = BASE_DIR / "data" / _c
+    if _p.exists():
+        DATA_PATH = _p
+        break
+if DATA_PATH is None:
+    raise FileNotFoundError(f"No data file found in {BASE_DIR / 'data'}. Tried: {_candidates}")
 REPORTS_DIR = BASE_DIR / "reports"
 PLOTS_DIR = REPORTS_DIR / "plots"
 PLOTS_DIR.mkdir(parents=True, exist_ok=True)

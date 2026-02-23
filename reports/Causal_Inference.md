@@ -49,30 +49,30 @@ GROUP BY is_late_payer
 
 ## Findings
 
-### Feature Comparison (D7=0 segment: 989,137 users)
+### Feature Comparison (D7=0 segment: 1,596,341 users)
 | Feature | Late Payer Mean | Non-Payer Mean | Ratio |
 |---------|----------------|----------------|-------|
-| win_rate_d7 | 0.000 | 0.000 | infx |
-| games_d7 | 0.000 | 0.000 | infx |
-| avg_score_d7 | 0.000 | 0.000 | infx |
-| avg_game_duration_d7 | 0.000 | 0.000 | infx |
-| kd_d7 | 0.000 | 0.000 | infx |
-| max_level_game_d7 | 0.000 | 0.000 | infx |
-| kills_d7 | 0.000 | 0.000 | infx |
-| deaths_d7 | 0.000 | 0.000 | infx |
-| login_rows_d7 | 28.824 | 9.864 | 2.92x |
-| max_level_seen_d7 | 45.446 | 19.996 | 2.27x |
-| active_days_d7 | 6.408 | 3.241 | 1.98x |
-| max_ladderscore_d7 | 1153.578 | 981.851 | 1.17x |
+| kills_d7 | 769.982 | 205.457 | 3.75x |
+| games_d7 | 66.006 | 19.594 | 3.37x |
+| deaths_d7 | 399.867 | 119.901 | 3.33x |
+| login_rows_d7 | 24.714 | 8.116 | 3.04x |
+| max_level_seen_d7 | 44.096 | 18.081 | 2.44x |
+| max_level_game_d7 | 44.967 | 19.774 | 2.27x |
+| active_days_d7 | 5.580 | 2.753 | 2.03x |
+| win_rate_d7 | 0.410 | 0.298 | 1.38x |
+| kd_d7 | 2.147 | 1.657 | 1.30x |
+| avg_game_duration_d7 | 373.568 | 298.175 | 1.25x |
+| avg_score_d7 | 6816.970 | 5477.890 | 1.24x |
+| max_ladderscore_d7 | 1148.567 | 963.524 | 1.19x |
 
 ### 1. Strongest Behavioral Predictor
-- **win_rate_d7** has the highest payer/non-payer ratio at infx
+- **kills_d7** has the highest payer/non-payer ratio at 3.75x
 - Late payers show significantly different behavior even before paying
 
 ### 2. Engagement → Conversion Lift
-- High engagement (games > median=0): **nan%** late conversion
-- Low engagement (games ≤ median): **3.112%** late conversion
-- **Lift: nanx** — engaged non-payers are much more likely to convert
+- High engagement (games > median=5): **5.186%** late conversion
+- Low engagement (games ≤ median): **0.585%** late conversion
+- **Lift: 8.86x** — engaged non-payers are much more likely to convert
 
 ### 3. Dose-Response Pattern
 - Late conversion rate increases monotonically with games played and active days
@@ -87,7 +87,7 @@ GROUP BY is_late_payer
 ## Business Impact & Next Actions
 
 1. **Engagement Nudges:** Push notifications to D7=0 users with moderate engagement to play more games
-2. **Feature Engineering:** Prioritize win_rate_d7 and engagement features in ML models
+2. **Feature Engineering:** Prioritize kills_d7 and engagement features in ML models
 3. **A/B Test Design:** Test engagement-boosting interventions (daily rewards, challenges)
    - Treatment: Engagement incentives to D7 non-payers
    - Control: No intervention

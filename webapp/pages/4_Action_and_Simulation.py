@@ -13,7 +13,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shared import (
-    render_sidebar, render_top_menu, get_data, format_currency, convert_vnd,
+    render_sidebar, render_top_menu, render_report_md, get_data, format_currency, convert_vnd,
     get_currency_info, REPORTS_DIR,
     BASELINE_HEURISTICS, compute_baseline_ranking,
 )
@@ -29,10 +29,7 @@ if st.session_state.get("data_missing", False):
     st.info("Please select a dataset from the **Dataset Registry** in the sidebar.")
     st.stop()
 
-report_path = REPORTS_DIR / "action_simulation.md"
-if report_path.exists():
-    with st.expander("📄 Action Simulation Report", expanded=False):
-        st.markdown(report_path.read_text(encoding="utf-8"))
+render_report_md(REPORTS_DIR / "action_simulation.md", "📄 Action Simulation Report")
 
 # Load dataset from registry
 df_sim = get_data()

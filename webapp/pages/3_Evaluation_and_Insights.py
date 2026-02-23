@@ -15,7 +15,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shared import (
-    render_sidebar, render_top_menu, get_data, get_active_model, convert_vnd, get_currency_info,
+    render_sidebar, render_top_menu, render_report_md, get_data, get_active_model, convert_vnd, get_currency_info,
     format_currency, REPORTS_DIR,
     BASELINE_HEURISTICS, compute_baseline_ranking,
 )
@@ -98,10 +98,7 @@ if st.session_state.get("data_missing", False):
 
 cur = get_currency_info()
 
-report_path = REPORTS_DIR / "evaluation_metrics.md"
-if report_path.exists():
-    with st.expander("📄 Evaluation Metrics Report", expanded=False):
-        st.markdown(report_path.read_text(encoding="utf-8"))
+render_report_md(REPORTS_DIR / "evaluation_metrics.md", "📄 Evaluation Metrics Report")
 
 # Load dataset from registry
 df_eval = get_data()

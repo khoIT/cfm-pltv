@@ -1,0 +1,56 @@
+{
+  "model_type": "XGBoost Regressor",
+  "dataset_size": 2624049,
+  "n_features": 11,
+  "features": [
+    "rev_d7",
+    "first_charge_day_offset_d7",
+    "games_d7",
+    "win_rate_d7",
+    "avg_score_d7",
+    "kills_d7",
+    "kd_d7",
+    "active_days_d7",
+    "max_level_seen_d7",
+    "media_source",
+    "first_country_code"
+  ],
+  "numeric_features": [
+    "rev_d7",
+    "first_charge_day_offset_d7",
+    "games_d7",
+    "win_rate_d7",
+    "avg_score_d7",
+    "kills_d7",
+    "kd_d7",
+    "active_days_d7",
+    "max_level_seen_d7"
+  ],
+  "categorical_features": [
+    "media_source",
+    "first_country_code"
+  ],
+  "feature_importances": {
+    "rev_d7": 0.958153,
+    "max_level_seen_d7": 0.031134,
+    "kd_d7": 0.00359,
+    "active_days_d7": 0.002523,
+    "win_rate_d7": 0.001261,
+    "media_source": 0.000933,
+    "games_d7": 0.000897,
+    "avg_score_d7": 0.000854,
+    "kills_d7": 0.000628,
+    "first_charge_day_offset_d7": 2.9e-05,
+    "first_country_code": 0.0
+  },
+  "hyperparameters": {
+    "n_estimators": 200,
+    "max_depth": 6,
+    "learning_rate": 0.05,
+    "objective": "reg:squaredlogerror"
+  },
+  "training_date": "2026-02-23",
+  "training_time": "15:43:34",
+  "saved_at": "2026-02-23T15:44:29.686689",
+  "model_name": "pltv_model_20260223_1543_11f_26Mrows"
+}

@@ -1,4 +1,4 @@
-# Media Cohort Comparison — CFM pLTV
+# Cohort Comparison — CFM pLTV
 
 ## Business Context
 Compare user cohorts by **media source** and **OS** to identify which acquisition channels
@@ -51,20 +51,20 @@ ORDER BY arpu_d30 DESC
 ### Media Source Summary
 | Source | Users | ARPU (₫) | D30 Payer % | Late Payer % | Games D7 |
 |--------|-------|-----------|-------------|--------------|----------|
-| Apple Search Ads | 120,448 | 1,332,004 | 9.38% | 3.78% | 0.0 |
-| organic | 371,405 | 1,236,212 | 9.10% | 3.55% | 0.0 |
-| Facebook Ads | 90,695 | 1,117,130 | 9.02% | 3.53% | 0.0 |
-| tiktokglobal_int | 188,585 | 772,159 | 6.98% | 2.60% | 0.0 |
-| googleadwords_int | 258,665 | 490,845 | 4.95% | 1.78% | 0.0 |
+| Apple Search Ads | 186,513 | 42,163 | 7.90% | 3.57% | 30.4 |
+| organic | 606,184 | 34,234 | 7.35% | 3.23% | 25.3 |
+| Facebook Ads | 117,605 | 27,149 | 7.98% | 3.44% | 24.5 |
+| tiktokglobal_int | 286,748 | 15,477 | 5.69% | 2.37% | 20.5 |
+| googleadwords_int | 446,877 | 9,422 | 3.98% | 1.61% | 17.6 |
 
 ### 1. Best ARPU Channel
-- **Apple Search Ads** leads with ARPU ₫1,332,004 and 9.38% D30 payer rate
+- **Apple Search Ads** leads with ARPU ₫42,163 and 7.90% D30 payer rate
 
 ### 2. Worst ARPU Channel
-- **googleadwords_int** has lowest ARPU at ₫490,845
+- **googleadwords_int** has lowest ARPU at ₫9,422
 
 ### 3. Highest Late Payer Opportunity
-- **Apple Search Ads** has the highest late payer rate at 3.78%
+- **Apple Search Ads** has the highest late payer rate at 3.57%
 - This channel benefits most from ML late payer detection
 
 ### 4. OS Differences

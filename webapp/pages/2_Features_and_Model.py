@@ -15,7 +15,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shared import (
-    render_sidebar, render_top_menu, get_data, format_currency, convert_vnd,
+    render_sidebar, render_top_menu, render_report_md, get_data, format_currency, convert_vnd,
     get_currency_info, REPORTS_DIR,
     FEATURE_GROUPS, ALL_NUMERIC_FEATURES, ALL_CAT_FEATURES,
     get_selected_features, get_flat_selected_features,
@@ -35,11 +35,7 @@ if st.session_state.get("data_missing", False):
 df = get_data()
 st.caption(f"Training data: **{len(df):,}** rows (2025-12-16 to 2026-01-08)")
 
-# Report
-report_path = REPORTS_DIR / "feature_store_overview.md"
-if report_path.exists():
-    with st.expander("📄 Feature Store Report", expanded=False):
-        st.markdown(report_path.read_text(encoding="utf-8"))
+render_report_md(REPORTS_DIR / "feature_store_overview.md", "📄 Feature Store Report")
 
 # =====================================================================
 # SECTION 1 — Feature Profiling

@@ -44,27 +44,27 @@ ORDER BY install_date
 ## Findings
 
 ### 1. Massive Launch-Day Spike, Rapid Normalization
-- **Launch day (Dec 16):** 435,015 installs — 3-4× higher than subsequent days
-- **By Dec 22:** 23,793 installs (partial day)
+- **Launch day (Dec 16):** 435,107 installs — 3-4× higher than subsequent days
+- **By Dec 22:** 30,222 installs (partial day)
 - Organic installs dominate launch day; paid UA ramps up later
 
 ### 2. Payer Rate Trends
-- **D30 payer rate:** Launch day at 10.51%, peak on 2025-12-16 at 10.51%
-- **Late payer rate:** Ranges from 1.92% to 3.83%
+- **D30 payer rate:** Launch day at 10.40%, peak on 2025-12-16 at 10.40%
+- **Late payer rate:** Ranges from 1.42% to 4.08%
 - Later cohorts may show higher payer rates as organic "curious" installs fade and paid UA targets higher-intent users
 
 ### 3. D7/D30 Revenue Ratio
-- D7 revenue captures **37.9%–41.8%** of D30 revenue
+- D7 revenue captures **24.2%–32.6%** of D30 revenue
 - Significant revenue accrues after D7, confirming the value of late payer detection
 
 ### 4. ARPU by Cohort
-- ARPU D30 ranges from ₫530,359 to ₫1,359,007
+- ARPU D30 ranges from ₫10,571 to ₫40,323
 - Launch-day ARPU may differ from steady-state due to organic user mix
 
 ## Business Impact & Next Actions
 
 1. **UA Timing:** Later cohorts (Dec 18+) may show higher quality — invest in sustained UA, not just launch burst
 2. **Late Payer Signal:** 2-3% late payer rate across all cohorts validates the ML late-payer detection approach
-3. **Revenue Forecasting:** D7 captures only ~39% of D30 revenue — D30 forecasts must account for late revenue
+3. **Revenue Forecasting:** D7 captures only ~28% of D30 revenue — D30 forecasts must account for late revenue
 4. **Cohort Monitoring:** Establish weekly cohort dashboards to detect quality degradation early
 5. **Seasonal Effects:** Need more data (2+ months) to distinguish day-of-week from trend effects
