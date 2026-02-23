@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shared import (
     render_sidebar, render_top_menu, render_report_md, get_data, get_registry_path,
     convert_vnd, get_currency_info, format_currency, REPORTS_DIR,
+    render_dataset_role_selector,
 )
 
 render_top_menu()
@@ -24,9 +25,9 @@ render_sidebar()
 
 # ── helpers ────────────────────────────────────────────────────────
 @st.cache_data(show_spinner="Computing temporal metrics…")
-def compute_temporal_metrics(csv_path: str, file_mtime: float):
-    """Load a CSV and compute daily cohort metrics."""
-    df = pd.read_csv(csv_path, low_memory=False)
+def compute_temporal_metrics(csv_path: str, file_mtime: float, _df: pd.DataFrame = None):
+    """Load a CSV (or accept a pre-loaded DataFrame) and compute daily cohort metrics."""
+    df = _df if _df is not None else pd.read_csv(csv_path, low_memory=False)
     if "install_date" not in df.columns or "ltv30" not in df.columns:
         return None, None, "Dataset must contain 'install_date' and 'ltv30' columns."
 
@@ -92,9 +93,18 @@ st.markdown(
     "Track payer rates, ARPU, engagement, and the D7→D30 revenue gap across time."
 )
 
-# Load from registry
-ds_path, ds_mtime = get_registry_path()
-df_raw, daily, error = compute_temporal_metrics(ds_path, ds_mtime)
+# ── Dataset role selector ─────────────────────────────────────────
+st.markdown("---")
+st.subheader("📂 Dataset")
+_df_loaded = render_dataset_role_selector(
+    page_key="ta",
+    help_text="**Both** combines train + test for the widest install date range.",
+)
+st.markdown("---")
+
+# Pass the DataFrame directly; use a hash of its shape+columns as the cache key
+_cache_key = f"{len(_df_loaded)}_{list(_df_loaded.columns)[:5]}"
+df_raw, daily, error = compute_temporal_metrics(_cache_key, 0.0, _df=_df_loaded)
 
 if error:
     st.error(f"❌ {error}")

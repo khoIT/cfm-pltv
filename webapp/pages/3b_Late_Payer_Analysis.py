@@ -15,9 +15,10 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shared import (
-    render_sidebar, render_top_menu, get_data, get_active_model, convert_vnd, get_currency_info,
+    render_sidebar, render_top_menu, get_active_model, convert_vnd, get_currency_info,
     format_currency, REPORTS_DIR,
     BASELINE_HEURISTICS, compute_baseline_ranking,
+    render_dataset_role_selector,
 )
 
 render_top_menu()
@@ -59,15 +60,22 @@ if st.session_state.get("data_missing", False):
 
 cur = get_currency_info()
 
+# ── Dataset role selector ─────────────────────────────────────────
+st.markdown("---")
+st.subheader("📂 Dataset")
+df_eval = render_dataset_role_selector(
+    page_key="lpa",
+    help_text="**Both** combines train + test for the widest date range and largest D7=0 population.",
+)
+st.markdown("---")
+
 st.markdown(
     "Users with **rev_d7 = 0** paid nothing in the first 7 days — yet some become high spenders later.  \n"
     "Heuristics like `rev_d7` rank them all equally (zero). This page quantifies how much **incremental value** "
     "the ML model adds by detecting these hidden future payers."
 )
 
-# Load dataset from registry
-df_eval = get_data()
-st.caption(f"Dataset: **{len(df_eval):,}** rows (from Dataset Registry)")
+st.caption(f"Dataset: **{len(df_eval):,}** rows")
 
 # ── model predictions ─────────────────────────────────────────────
 model, model_feats = get_active_model()

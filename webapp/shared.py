@@ -330,6 +330,75 @@ def load_csv_cached(path: str, mtime: float) -> pd.DataFrame:
     return pd.read_csv(path, low_memory=False)
 
 
+def render_dataset_role_selector(page_key: str, include_both: bool = True, help_text: str = "") -> pd.DataFrame:
+    """
+    Render a Train / Test / Both radio toggle and return the loaded DataFrame.
+    Handles combining train+test when 'both' is selected.
+    Caches each file load; switching selection always recalculates downstream.
+
+    Args:
+        page_key: unique widget key suffix (e.g. 'lpa', 'ta', 'cc', 'ci')
+        include_both: whether to show the 'Both' option
+        help_text: tooltip for the radio widget
+    Returns:
+        pd.DataFrame of the selected dataset(s)
+    """
+    import os as _os
+    role_meta = list_datasets_by_role()
+    avail = [r for r in ["train", "test"] if role_meta.get(r) is not None]
+    if not avail:
+        avail = ["train"]
+
+    options = avail + (["both"] if include_both and len(avail) == 2 else [])
+    labels = {
+        "train": "🏋️ Train",
+        "test":  "🧪 Test (holdout)",
+        "both":  "🔀 Both (train + test)",
+    }
+
+    selected = st.radio(
+        "Dataset:",
+        options,
+        format_func=lambda r: labels.get(r, r),
+        horizontal=True,
+        key=f"role_select_{page_key}",
+        help=help_text or "Train = in-sample. Test = held-out 20%. Both = combined for widest coverage.",
+    )
+
+    def _load(role):
+        info = role_meta.get(role)
+        if info is None:
+            return get_data()
+        path = info["path"]
+        mtime = _os.path.getmtime(path) if _os.path.exists(path) else 0.0
+        df = load_csv_cached(path, mtime)
+        df = df.copy()
+        df["_dataset_role"] = role
+        return df
+
+    if selected == "both":
+        df_train = _load("train")
+        df_test  = _load("test")
+        df = pd.concat([df_train, df_test], ignore_index=True)
+        df["_dataset_role"] = "both"
+        # Caption
+        info_t = role_meta.get("train", {})
+        info_v = role_meta.get("test", {})
+        st.caption(
+            f"**Train** {info_t.get('size_mb', 0):.1f} MB + **Test** {info_v.get('size_mb', 0):.1f} MB "
+            f"→ **{len(df):,} rows combined**"
+        )
+    else:
+        df = _load(selected)
+        info = role_meta.get(selected, {})
+        st.caption(
+            f"**{info.get('name', selected)}** — {info.get('size_mb', 0):.1f} MB | {len(df):,} rows"
+            + (f" | {info['split_info']}" if info.get('split_info') else "")
+        )
+
+    return df
+
+
 def get_registry_path() -> tuple:
     """Return (csv_path_str, file_mtime) for the currently selected registry dataset.
     Used by pages that pass path+mtime to cached compute functions."""
@@ -501,60 +570,3 @@ def list_datasets_by_role() -> dict:
     return roles
 
 
-def render_dataset_role_selector(
-    available_roles: list,
-    default_role: str = "train",
-    key_prefix: str = "ds_role",
-) -> tuple:
-    """
-    Render a Train / Test / Recent tab selector for pages that support multiple dataset roles.
-    Returns (selected_role, dataset_info_dict_or_None).
-
-    available_roles: subset of ['train', 'test', 'recent'] to show.
-    """
-    role_meta = list_datasets_by_role()
-
-    role_labels = {
-        "train":  "🏋️ Train (in-sample)",
-        "test":   "🧪 Test (holdout)",
-        "recent": "🆕 Recent (live scoring)",
-    }
-    role_descriptions = {
-        "train":  "Mature users (≥30d), 80% split — used for model training and all analysis pages.",
-        "test":   "Mature users (≥30d), 20% holdout — unbiased evaluation of model performance.",
-        "recent": "Users installed <30d ago — LTV30 not yet realized. Score with trained model only.",
-    }
-
-    tabs = st.tabs([role_labels[r] for r in available_roles])
-    selected_role = st.session_state.get(f"{key_prefix}_role", default_role)
-
-    for i, (tab, role) in enumerate(zip(tabs, available_roles)):
-        with tab:
-            st.caption(role_descriptions[role])
-            info = role_meta.get(role)
-            if info is None:
-                st.warning(
-                    f"No **{role}** dataset found. "
-                    "Upload a new dataset on the **📤 Data Upload** page to generate it automatically."
-                )
-            else:
-                st.caption(
-                    f"**{info['name']}** — {info['size_mb']:.1f} MB"
-                    + (f" | {info['split_info']}" if info["split_info"] else "")
-                )
-            # Track which tab is active via a hidden selectbox trick
-            if st.session_state.get(f"{key_prefix}_active_tab") == i:
-                selected_role = role
-                st.session_state[f"{key_prefix}_role"] = role
-
-    # Streamlit tabs don't expose active index natively — use a selectbox as fallback
-    chosen_role = st.selectbox(
-        "Dataset role",
-        available_roles,
-        index=available_roles.index(default_role) if default_role in available_roles else 0,
-        format_func=lambda r: role_labels[r],
-        key=f"{key_prefix}_select",
-        label_visibility="collapsed",
-    )
-    info = role_meta.get(chosen_role)
-    return chosen_role, info

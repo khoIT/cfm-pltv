@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shared import (
     render_sidebar, render_top_menu, render_report_md, get_registry_path,
     convert_vnd, get_currency_info, format_currency, REPORTS_DIR,
+    render_dataset_role_selector,
 )
 
 render_top_menu()
@@ -22,8 +23,8 @@ render_sidebar()
 
 # ── helpers ────────────────────────────────────────────────────────
 @st.cache_data(show_spinner="Computing causal inference metrics…")
-def compute_causal_metrics(csv_path: str, file_mtime: float):
-    df = pd.read_csv(csv_path, low_memory=False)
+def compute_causal_metrics(csv_path: str, file_mtime: float, _df: pd.DataFrame = None):
+    df = _df if _df is not None else pd.read_csv(csv_path, low_memory=False)
     if "ltv30" not in df.columns:
         return None, None, "Dataset must contain 'ltv30' column."
 
@@ -101,9 +102,17 @@ st.markdown(
 
 cur = get_currency_info()
 
-# Load from registry
-ds_path, ds_mtime = get_registry_path()
-df_raw, metrics, error = compute_causal_metrics(ds_path, ds_mtime)
+# ── Dataset role selector ─────────────────────────────────────────
+st.markdown("---")
+st.subheader("📂 Dataset")
+_df_loaded = render_dataset_role_selector(
+    page_key="ci",
+    help_text="**Both** gives a larger D7=0 population for more robust causal estimates.",
+)
+st.markdown("---")
+
+_cache_key = f"{len(_df_loaded)}_{list(_df_loaded.columns)[:5]}"
+df_raw, metrics, error = compute_causal_metrics(_cache_key, 0.0, _df=_df_loaded)
 if error:
     st.error(f"❌ {error}")
     st.stop()
