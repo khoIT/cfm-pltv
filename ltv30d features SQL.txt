@@ -1,0 +1,144 @@
+WITH attrib AS (
+  SELECT *
+  FROM (
+    SELECT
+      vopenid, game_id, device_id, install_id, install_time, touch_time,
+      media_source, campaign_id, adset_id, ad_id, site_id,
+      first_os, last_os, first_country_code, last_country_code,
+      ROW_NUMBER() OVER (PARTITION BY vopenid ORDER BY install_time DESC) AS rn
+    FROM iceberg.cfm_vn.std_master_user_profile
+  ) WHERE rn = 1
+),
+reg AS (
+  SELECT vopenid, MIN(ds) AS reg_day
+  FROM iceberg.cfm_vn.etl_new_register
+  WHERE ds >= date_add('day', -210, current_date)
+  AND ds <= date_add('day', -30, current_date)
+  GROUP BY 1
+),
+feat_login AS (
+  -- paste query from 2.4 here
+  	WITH reg AS (
+	  SELECT vopenid, MIN(ds) AS reg_day
+	  FROM iceberg.cfm_vn.etl_new_register
+	  WHERE ds >= date_add('day', -180, current_date)
+	  GROUP BY 1
+	),
+	role_map AS (
+	  SELECT DISTINCT vopenid, roleid
+	  FROM iceberg.cfm_vn.etl_new_register
+	  WHERE ds >= date_add('day', -180, current_date)
+	),
+	login_base AS (
+	  SELECT
+	    r.vopenid,
+	    r.reg_day,
+	    CAST(l.ds AS date) AS d,
+	    TRY_CAST(l.level AS integer) AS level_i,
+	    TRY_CAST(l.viplevel AS integer) AS viplevel_i,
+	    TRY_CAST(l.ladderscore AS double) AS ladderscore_d,
+	    l.network,
+	    l.loginchannel,
+	    l.clientversion
+	  FROM reg r
+	  JOIN role_map rm ON r.vopenid = rm.vopenid
+	  JOIN iceberg.cfm_vn.etl_login l
+	    ON l.roleid = rm.roleid
+	   AND CAST(l.ds AS date) BETWEEN r.reg_day AND date_add('day', 6, r.reg_day)
+	)
+  SELECT
+    vopenid, reg_day, date_add('day', 6, reg_day) AS asof_day,
+    approx_distinct(d) AS active_days_d7,
+    COUNT(*) AS login_events_d7,
+    6 - date_diff('day', reg_day, MAX(d)) AS last_login_day_offset,
+    MAX(level_i) AS max_level_d7,
+    MAX(viplevel_i) AS max_viplevel_d7,
+    MAX(ladderscore_d) AS max_ladderscore_d7,
+    MAX(CASE WHEN viplevel_i IS NOT NULL AND viplevel_i > 0 THEN 1 ELSE 0 END) AS has_vip_d7,
+    approx_distinct(network) AS network_variety_d7,
+    approx_distinct(loginchannel) AS loginchannel_variety_d7,
+    approx_distinct(clientversion) AS clientversion_variety_d7
+  FROM (
+    SELECT
+      r.vopenid, r.reg_day, CAST(l.ds AS date) AS d,
+      TRY_CAST(l.level AS integer) AS level_i,
+      TRY_CAST(l.viplevel AS integer) AS viplevel_i,
+      TRY_CAST(l.ladderscore AS double) AS ladderscore_d,
+      l.network, l.loginchannel, l.clientversion
+    FROM reg r
+    JOIN (SELECT DISTINCT vopenid, roleid FROM iceberg.cfm_vn.etl_new_register) rm
+      ON r.vopenid = rm.vopenid
+    JOIN iceberg.cfm_vn.etl_login l
+      ON l.roleid = rm.roleid
+     AND CAST(l.ds AS date) BETWEEN r.reg_day AND date_add('day', 6, r.reg_day)
+  )
+  GROUP BY 1,2
+),
+feat_pay AS (
+  -- paste query from 2.5 here
+	WITH reg AS (
+	  SELECT vopenid, MIN(ds) AS reg_day
+	  FROM iceberg.cfm_vn.etl_new_register
+	  WHERE ds >= date_add('day', -180, current_date)
+	  GROUP BY 1
+	),
+	pay AS (
+	  SELECT
+	    vopenid,
+	    CAST(ds AS date) AS d,
+	    COALESCE(imoney_us, imoney, 0.0) AS amt
+	  FROM iceberg.cfm_vn.etl_recharge
+	  WHERE ds >= date_add('day', -210, current_date)
+	)
+  SELECT
+    r.vopenid, r.reg_day,
+    SUM(CASE WHEN p.d BETWEEN r.reg_day AND date_add('day', 6, r.reg_day) THEN p.amt ELSE 0.0 END) AS rev_d7,
+    COUNT_IF(p.d BETWEEN r.reg_day AND date_add('day', 6, r.reg_day) AND p.amt > 0) AS txn_cnt_d7,
+    MAX(CASE WHEN p.d BETWEEN r.reg_day AND date_add('day', 6, r.reg_day) AND p.amt > 0 THEN 1 ELSE 0 END) AS is_payer_d7,
+    MIN(CASE WHEN p.d BETWEEN r.reg_day AND date_add('day', 6, r.reg_day) AND p.amt > 0 THEN date_diff('day', r.reg_day, p.d) END) AS first_charge_day_offset
+  FROM reg r
+  LEFT join pay p
+    ON p.vopenid = r.vopenid
+  GROUP BY 1,2
+),
+lbl AS (
+  -- paste query from 2.6 here
+	WITH reg AS (
+	  SELECT vopenid, MIN(ds) AS reg_day
+	  FROM iceberg.cfm_vn.etl_new_register
+	  WHERE ds >= date_add('day', -180, current_date)
+	  GROUP BY 1
+	),
+	pay AS (
+	  SELECT vopenid, CAST(ds AS date) AS d, COALESCE(imoney_us, imoney, 0.0) AS amt
+	  FROM iceberg.cfm_vn.etl_recharge
+	  WHERE ds >= date_add('day', -210, current_date)
+	)
+  SELECT
+    r.vopenid, r.reg_day,
+    SUM(CASE WHEN p.d BETWEEN r.reg_day AND date_add('day', 29, r.reg_day) THEN p.amt ELSE 0.0 END) AS ltv30,
+    MAX(CASE WHEN p.d BETWEEN r.reg_day AND date_add('day', 29, r.reg_day) AND p.amt > 0 THEN 1 ELSE 0 END) AS is_payer_30
+  FROM reg r
+  LEFT JOIN pay p
+    ON p.vopenid = r.vopenid
+  GROUP BY 1,2
+)
+SELECT
+  r.vopenid,
+  r.reg_day,
+  fl.asof_day,
+  -- attribution dims
+  a.media_source, a.campaign_id, a.adset_id, a.ad_id, a.site_id,
+  a.install_time, a.touch_time, a.first_os, a.last_os, a.first_country_code, a.last_country_code,
+  -- features
+  fl.active_days_d7, fl.login_events_d7, fl.last_login_day_offset,
+  fl.max_level_d7, fl.max_viplevel_d7, fl.max_ladderscore_d7, fl.has_vip_d7,
+  fl.network_variety_d7, fl.loginchannel_variety_d7, fl.clientversion_variety_d7,
+  fp.rev_d7, fp.txn_cnt_d7, fp.is_payer_d7, fp.first_charge_day_offset,
+  -- labels
+  l.ltv30, l.is_payer_30
+FROM reg r
+LEFT JOIN attrib a   ON a.vopenid = r.vopenid
+LEFT JOIN feat_login fl ON fl.vopenid = r.vopenid AND fl.reg_day = r.reg_day
+LEFT JOIN feat_pay   fp ON fp.vopenid = r.vopenid AND fp.reg_day = r.reg_day
+LEFT JOIN lbl        l  ON l.vopenid  = r.vopenid AND l.reg_day  = r.reg_day;

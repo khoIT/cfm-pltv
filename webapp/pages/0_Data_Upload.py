@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shared import render_sidebar, render_top_menu, DATA_DIR
-from data_uploader import show_upload_interface, check_data_exists, show_dataset_management
+from data_uploader import show_upload_interface, check_data_exists, show_dataset_management, regenerate_all_caches
 
 render_top_menu()
 render_sidebar()
@@ -27,6 +27,15 @@ with tab_upload:
     show_upload_interface()
 
 with tab_manage:
+    st.markdown("#### 🔄 Refresh All Pages")
+    st.caption("Use this after replacing datasets on disk or re-uploading to force every page to reload fresh data.")
+    if st.button("🔄 Regenerate All Pages", type="primary", use_container_width=True,
+                 key="regen_manage_tab",
+                 help="Clears all cached data so every page reloads with the current datasets."):
+        regenerate_all_caches()
+        st.success("✅ All caches cleared — navigate to any page to see fresh results.")
+        st.rerun()
+    st.markdown("---")
     show_dataset_management()
 
     # Also show raw file list for transparency

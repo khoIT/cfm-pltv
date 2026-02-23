@@ -13,6 +13,9 @@ import shutil
 MODELS_DIR = Path(__file__).resolve().parent.parent / "models"
 MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
+# Default model to auto-load on app startup
+DEFAULT_MODEL = "pltv_model_20260223_14_16Mrows"
+
 
 def save_model(model, model_name: str, metadata: dict) -> tuple[bool, str]:
     """
@@ -219,6 +222,25 @@ def delete_model(model_name: str) -> bool:
     except Exception as e:
         st.error(f"Error deleting model: {str(e)}")
         return False
+
+
+def auto_load_default_model():
+    """
+    Auto-load the default model into session state if no model is loaded yet.
+    Called once per session (idempotent).
+    """
+    if "loaded_model" in st.session_state or "model" in st.session_state:
+        return  # already have a model
+
+    model_dir = MODELS_DIR / DEFAULT_MODEL
+    if not model_dir.exists():
+        return  # default model not on disk
+
+    model, metadata = load_model(DEFAULT_MODEL)
+    if model is not None:
+        st.session_state["loaded_model"] = model
+        st.session_state["loaded_model_name"] = DEFAULT_MODEL
+        st.session_state["loaded_model_metadata"] = metadata
 
 
 def show_model_management_ui():

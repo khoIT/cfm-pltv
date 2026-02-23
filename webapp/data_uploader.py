@@ -1,249 +1,295 @@
 """
 Data Upload Module
-Allows users to upload a CSV file and split it into 1, 2, or 3 datasets.
-Each dataset is registered in the Dataset Registry and can be used independently per page.
+Uploads a full dataset dump and automatically splits it into:
+  - cfm_pltv_train  : mature users (install_date <= dump_date - 30d), 80% random split
+  - cfm_pltv_test   : mature users (install_date <= dump_date - 30d), 20% random split
+  - cfm_pltv_recent : recent users (install_date > dump_date - 30d), LTV30 not yet realized
+
+The dump_date is inferred as the maximum install_date in the file (or overridable by the user).
 """
 import streamlit as st
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
 
+MATURITY_DAYS = 30          # users need this many days for LTV30 to be realized
+TRAIN_FRACTION = 0.80       # fraction of mature users assigned to train
+
+
+def _infer_dump_date(df: pd.DataFrame) -> pd.Timestamp:
+    """Return the latest install_date in the dataframe as the effective dump date."""
+    return pd.to_datetime(df["install_date"]).max()
+
+
+def _split_by_maturity(df: pd.DataFrame, dump_date: pd.Timestamp,
+                        maturity_days: int, train_frac: float, random_seed: int = 42):
+    """
+    Split df into (mature_train, mature_test, recent).
+    mature = install_date <= dump_date - maturity_days
+    recent = install_date >  dump_date - maturity_days
+    """
+    df = df.copy()
+    df["_install_dt"] = pd.to_datetime(df["install_date"])
+    cutoff = dump_date - timedelta(days=maturity_days)
+
+    mature = df[df["_install_dt"] <= cutoff].drop(columns=["_install_dt"])
+    recent = df[df["_install_dt"] >  cutoff].drop(columns=["_install_dt"])
+
+    # Random 80/20 split within mature cohort
+    mature_shuffled = mature.sample(frac=1, random_state=random_seed).reset_index(drop=True)
+    n_train = int(len(mature_shuffled) * train_frac)
+    train = mature_shuffled.iloc[:n_train].reset_index(drop=True)
+    test  = mature_shuffled.iloc[n_train:].reset_index(drop=True)
+
+    return train, test, recent, cutoff
+
 
 def show_upload_interface():
-    """Display file upload interface with flexible split options."""
+    """Display file upload interface with automatic maturity-based split."""
     st.markdown("### 📤 Upload Dataset")
     st.markdown(
-        "Upload your CSV file. You can choose to keep it as **one dataset** "
-        "or **split** it into 2 or 3 parts. Each part is registered separately "
-        "and can be used independently on any page."
+        "Upload your **full dataset dump** (all users, Dec 16 → today). "
+        "The system will automatically split it into three datasets based on data maturity:"
+    )
+    st.info(
+        "- **Train** — users installed ≥30 days ago (LTV30 fully realized), 80% random split  \n"
+        "- **Test** — same mature cohort, remaining 20% holdout  \n"
+        "- **Recent** — users installed <30 days ago (LTV30 not yet realized — for live scoring)",
+        icon="📊"
     )
 
     uploaded_file = st.file_uploader(
         "Choose a CSV file",
         type=["csv"],
-        help="Upload your complete dataset. Must contain columns: vopenid, ltv30, install_date, etc."
+        help="Must contain columns: vopenid, ltv30, install_date"
     )
 
-    if uploaded_file is not None:
-        try:
-            file_size = uploaded_file.size / (1024 * 1024)
-            st.info(f"📁 File: **{uploaded_file.name}** ({file_size:.1f} MB)")
+    if uploaded_file is None:
+        return False
 
-            with st.spinner("Reading CSV file..."):
-                df = pd.read_csv(uploaded_file, low_memory=False)
+    try:
+        file_size = uploaded_file.size / (1024 * 1024)
+        st.info(f"📁 **{uploaded_file.name}** — {file_size:.1f} MB")
 
-            st.success(f"✅ Loaded **{len(df):,}** rows, **{len(df.columns)}** columns")
+        with st.spinner("Reading CSV…"):
+            df = pd.read_csv(uploaded_file, low_memory=False)
 
-            with st.expander("📊 Data Preview (first 10 rows)", expanded=False):
-                st.dataframe(df.head(10), use_container_width=True)
+        st.success(f"✅ Loaded **{len(df):,}** rows × **{len(df.columns)}** columns")
 
-            # Validate required columns
-            required_cols = ["vopenid", "ltv30", "install_date"]
-            missing = [c for c in required_cols if c not in df.columns]
-            if missing:
-                st.error(f"❌ Missing required columns: {', '.join(missing)}")
-                return False
+        with st.expander("📊 Data Preview (first 10 rows)", expanded=False):
+            st.dataframe(df.head(10), use_container_width=True)
 
-            # Column info
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Total Rows", f"{len(df):,}")
-            with col2:
-                st.metric("Total Columns", len(df.columns))
-            with col3:
-                payer_rate = df["ltv30"].gt(0).mean() * 100 if "ltv30" in df.columns else 0
-                st.metric("Payer Rate", f"{payer_rate:.1f}%")
+        # Validate required columns
+        required_cols = ["vopenid", "ltv30", "install_date"]
+        missing = [c for c in required_cols if c not in df.columns]
+        if missing:
+            st.error(f"❌ Missing required columns: {', '.join(missing)}")
+            return False
 
-            # ── Split Configuration ────────────────────────────────
-            st.markdown("---")
-            st.markdown("### ⚙️ Split Configuration")
+        df["install_date"] = pd.to_datetime(df["install_date"])
+        inferred_dump_date = _infer_dump_date(df)
+        min_date = df["install_date"].min()
+        payer_rate = df["ltv30"].gt(0).mean() * 100
 
-            num_splits = st.radio(
-                "How many datasets?",
-                [1, 2, 3],
-                index=2,
-                horizontal=True,
-                help="**1**: Keep the file as a single dataset.  \n"
-                     "**2**: Split into two (e.g., Train + Test).  \n"
-                     "**3**: Split into three (e.g., Train + Test1 + Test2).",
+        # ── Dataset overview ──────────────────────────────────────
+        c1, c2, c3, c4 = st.columns(4)
+        with c1: st.metric("Total Rows", f"{len(df):,}")
+        with c2: st.metric("Date Range", f"{min_date.date()} → {inferred_dump_date.date()}")
+        with c3: st.metric("Payer Rate", f"{payer_rate:.1f}%")
+        with c4: st.metric("Columns", len(df.columns))
+
+        # ── Split configuration ───────────────────────────────────
+        st.markdown("---")
+        st.markdown("### ⚙️ Split Configuration")
+
+        col_cfg1, col_cfg2, col_cfg3 = st.columns(3)
+        with col_cfg1:
+            maturity_days = st.number_input(
+                "Maturity threshold (days)",
+                min_value=7, max_value=90, value=MATURITY_DAYS, step=1,
+                help="Users installed more than this many days before the dump date "
+                     "have a fully-realized LTV30 and go into Train/Test. "
+                     "More recent users go into Recent."
+            )
+        with col_cfg2:
+            train_pct = st.slider(
+                "Train % (of mature users)",
+                min_value=50, max_value=95, value=int(TRAIN_FRACTION * 100), step=5,
+                help="Fraction of mature users assigned to Train. Remainder goes to Test."
+            )
+        with col_cfg3:
+            dump_date_override = st.date_input(
+                "Dump date (auto-detected)",
+                value=inferred_dump_date.date(),
+                help="The reference date used to compute maturity. "
+                     "Defaults to the latest install_date in the file."
             )
 
-            # Dataset names
-            st.markdown("#### 📝 Name your datasets")
-            base_name = Path(uploaded_file.name).stem.replace(" ", "_")
+        dump_date = pd.Timestamp(dump_date_override)
+        train_frac = train_pct / 100.0
 
-            if num_splits == 1:
-                name_1 = st.text_input("Dataset name", value=base_name, key="ds_name_1")
-                pct_1 = 100
-                pct_2 = pct_3 = 0
-            elif num_splits == 2:
-                nc1, nc2 = st.columns(2)
-                with nc1:
-                    name_1 = st.text_input("Dataset 1 name", value=f"{base_name}_train", key="ds_name_1")
-                with nc2:
-                    name_2 = st.text_input("Dataset 2 name", value=f"{base_name}_test", key="ds_name_2")
-                sc1, sc2 = st.columns(2)
-                with sc1:
-                    pct_1 = st.slider("Dataset 1 %", 10, 90, 70, 5, key="pct_1")
-                with sc2:
-                    pct_2 = 100 - pct_1
-                    st.metric("Dataset 2 %", f"{pct_2}%")
-                pct_3 = 0
-            else:  # 3
-                nc1, nc2, nc3 = st.columns(3)
-                with nc1:
-                    name_1 = st.text_input("Dataset 1 name", value=f"{base_name}_train", key="ds_name_1")
-                with nc2:
-                    name_2 = st.text_input("Dataset 2 name", value=f"{base_name}_test1", key="ds_name_2")
-                with nc3:
-                    name_3 = st.text_input("Dataset 3 name", value=f"{base_name}_test2", key="ds_name_3")
-                sc1, sc2, sc3 = st.columns(3)
-                with sc1:
-                    pct_1 = st.slider("Dataset 1 %", 10, 80, 70, 5, key="pct_1")
-                with sc2:
-                    pct_2 = st.slider("Dataset 2 %", 5, 40, 15, 5, key="pct_2")
-                with sc3:
-                    pct_3 = 100 - pct_1 - pct_2
-                    st.metric("Dataset 3 %", f"{pct_3}%")
-                if pct_3 < 5:
-                    st.warning("⚠️ Dataset 3 is too small. Adjust the other sliders.")
-                    return False
+        # ── Preview split ─────────────────────────────────────────
+        train_df, test_df, recent_df, cutoff = _split_by_maturity(
+            df, dump_date, int(maturity_days), train_frac)
 
-            # Split preview
-            n1 = int(len(df) * pct_1 / 100) if num_splits > 1 else len(df)
-            n2 = int(len(df) * pct_2 / 100) if num_splits >= 2 else 0
-            n3 = len(df) - n1 - n2 if num_splits >= 3 else 0
+        preview = pd.DataFrame([
+            {
+                "Dataset": "cfm_pltv_train",
+                "Users": f"{len(train_df):,}",
+                "% of total": f"{len(train_df)/len(df)*100:.1f}%",
+                "Install date range": f"≤ {cutoff.date()}",
+                "LTV30 realized?": "✅ Yes",
+                "Use for": "Model training, all analysis pages",
+            },
+            {
+                "Dataset": "cfm_pltv_test",
+                "Users": f"{len(test_df):,}",
+                "% of total": f"{len(test_df)/len(df)*100:.1f}%",
+                "Install date range": f"≤ {cutoff.date()}",
+                "LTV30 realized?": "✅ Yes",
+                "Use for": "Model evaluation (holdout), Evaluation & Insights page",
+            },
+            {
+                "Dataset": "cfm_pltv_recent",
+                "Users": f"{len(recent_df):,}",
+                "% of total": f"{len(recent_df)/len(df)*100:.1f}%",
+                "Install date range": f"> {cutoff.date()}",
+                "LTV30 realized?": "⏳ Not yet",
+                "Use for": "Live scoring, Action & Simulation (score recent users)",
+            },
+        ])
+        st.dataframe(preview, use_container_width=True, hide_index=True)
 
-            preview_rows = [{"Dataset": name_1, "Rows": f"{n1:,}", "%": f"{pct_1}%"}]
-            if num_splits >= 2:
-                preview_rows.append({"Dataset": name_2, "Rows": f"{n2:,}", "%": f"{pct_2}%"})
-            if num_splits >= 3:
-                preview_rows.append({"Dataset": name_3, "Rows": f"{n3:,}", "%": f"{pct_3}%"})
-            st.dataframe(pd.DataFrame(preview_rows), use_container_width=True, hide_index=True)
-
-            # Split strategy
-            st.markdown("---")
-            split_method = st.radio(
-                "Split strategy",
-                ["Time-based (Recommended)", "Random"],
-                help="Time-based: sorts by install_date and splits chronologically.  \n"
-                     "Random: shuffles and splits randomly.",
-            ) if num_splits > 1 else "No split"
-
-            # Process
-            st.markdown("---")
-            if st.button("🚀 Process & Save Datasets", type="primary", use_container_width=True):
-                with st.spinner("Processing and saving datasets..."):
-                    names = [name_1]
-                    pcts = [pct_1]
-                    if num_splits >= 2:
-                        names.append(name_2)
-                        pcts.append(pct_2)
-                    if num_splits >= 3:
-                        names.append(name_3)
-                        pcts.append(pct_3)
-
-                    success = process_and_save_flexible(
-                        df, names, pcts,
-                        time_based=(split_method == "Time-based (Recommended)"),
-                        source_file=uploaded_file.name,
-                    )
-                    if success:
-                        st.success("✅ **Datasets saved and registered!**")
-                        st.balloons()
-                        st.markdown("**Next step:** Select a dataset from the sidebar on any page.")
-                        if st.button("🔄 Reload App"):
-                            st.rerun()
-                        return True
-                    else:
-                        st.error("❌ Failed to save. Check errors above.")
-                        return False
-
-        except Exception as e:
-            st.error(f"❌ Error reading file: {str(e)}")
+        if len(train_df) < 100:
+            st.error("❌ Train set has fewer than 100 users. Reduce the maturity threshold or upload more data.")
             return False
+        if len(test_df) < 50:
+            st.warning("⚠️ Test set is very small (<50 users). Consider reducing the maturity threshold.")
+        if len(recent_df) == 0:
+            st.warning("⚠️ No recent users found. All users are mature — Recent dataset will be empty.")
+
+        # ── Custom names ──────────────────────────────────────────
+        with st.expander("✏️ Customize dataset names (optional)", expanded=False):
+            nc1, nc2, nc3 = st.columns(3)
+            with nc1:
+                name_train = st.text_input("Train name", value="cfm_pltv_train", key="ds_name_train")
+            with nc2:
+                name_test = st.text_input("Test name", value="cfm_pltv_test", key="ds_name_test")
+            with nc3:
+                name_recent = st.text_input("Recent name", value="cfm_pltv_recent", key="ds_name_recent")
+        # Use defaults if expander not opened
+        if "ds_name_train" not in st.session_state:
+            name_train, name_test, name_recent = "cfm_pltv_train", "cfm_pltv_test", "cfm_pltv_recent"
+
+        # ── Process ───────────────────────────────────────────────
+        st.markdown("---")
+        if st.button("🚀 Process & Save Datasets", type="primary", use_container_width=True):
+            with st.spinner("Saving datasets…"):
+                success = _save_three_datasets(
+                    train_df, test_df, recent_df,
+                    name_train, name_test, name_recent,
+                    source_file=uploaded_file.name,
+                    dump_date=dump_date,
+                    cutoff=cutoff,
+                    maturity_days=int(maturity_days),
+                )
+            if success:
+                st.success("✅ **Three datasets saved and registered!**")
+                st.balloons()
+                st.markdown(
+                    "**Next steps:**  \n"
+                    "- Analysis pages default to **cfm_pltv_train**  \n"
+                    "- **Evaluation & Insights** and **Action & Simulation** let you switch to **cfm_pltv_test**  \n"
+                    "- **Action & Simulation** also lets you score **cfm_pltv_recent** users with the trained model"
+                )
+                st.markdown("---")
+                if st.button("🔄 Regenerate All Pages", type="primary", use_container_width=True,
+                             help="Clears all cached data so every page reloads with the new datasets."):
+                    regenerate_all_caches()
+                    st.success("✅ All caches cleared — navigate to any page to see fresh results.")
+                    st.rerun()
+                return True
+            else:
+                st.error("❌ Failed to save. Check errors above.")
+                return False
+
+    except Exception as e:
+        st.error(f"❌ Error: {str(e)}")
+        import traceback
+        st.code(traceback.format_exc())
+        return False
 
     return False
 
 
-def process_and_save_flexible(df: pd.DataFrame, names: list, pcts: list,
-                               time_based: bool = True, source_file: str = "") -> bool:
-    """Split data into N datasets, save to CSV, and register each."""
+def _save_three_datasets(train_df, test_df, recent_df,
+                          name_train, name_test, name_recent,
+                          source_file, dump_date, cutoff, maturity_days) -> bool:
+    """Save the three split datasets to CSV and register each."""
     from dataset_registry import register_dataset
-
     try:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
+        total = len(train_df) + len(test_df) + len(recent_df)
 
-        # Sort or shuffle
-        if time_based and len(names) > 1:
-            if "install_date" not in df.columns:
-                st.error("❌ install_date column not found. Cannot use time-based split.")
-                return False
-            df = df.sort_values("install_date").reset_index(drop=True)
-        elif len(names) > 1:
-            df = df.sample(frac=1, random_state=42).reset_index(drop=True)
+        splits = [
+            (name_train,  train_df,  "train",  f"Mature users (install ≤ {cutoff.date()}), 80% split"),
+            (name_test,   test_df,   "test",   f"Mature users (install ≤ {cutoff.date()}), 20% holdout"),
+            (name_recent, recent_df, "recent", f"Recent users (install > {cutoff.date()}), LTV30 not realized"),
+        ]
 
-        # Split
-        splits = []
-        start = 0
-        for i, (name, pct) in enumerate(zip(names, pcts)):
-            if i == len(names) - 1:
-                chunk = df.iloc[start:]
-            else:
-                n = int(len(df) * pct / 100)
-                chunk = df.iloc[start:start + n]
-                start += n
-            splits.append((name, chunk))
-
-        # Save and register
-        created = []
-        for name, chunk in splits:
+        for name, chunk, role, split_info in splits:
             safe_name = name.lower().replace(" ", "_").replace("-", "_")
             filename = f"{safe_name}.csv"
             filepath = DATA_DIR / filename
             chunk.to_csv(filepath, index=False)
 
-            split_info = f"{len(chunk):,} rows ({len(chunk)/len(df)*100:.0f}%)"
-            ds_id = register_dataset(
+            register_dataset(
                 name=name,
                 filename=filename,
                 rows=len(chunk),
                 columns=len(chunk.columns),
                 source_file=source_file,
                 split_info=split_info,
+                extra_meta={
+                    "role": role,
+                    "dump_date": str(dump_date.date()),
+                    "maturity_cutoff": str(cutoff.date()),
+                    "maturity_days": maturity_days,
+                    "pct_of_total": round(len(chunk) / total * 100, 1) if total > 0 else 0,
+                },
             )
-            created.append((ds_id, name, len(chunk), filename))
+            pct = len(chunk) / total * 100 if total > 0 else 0
+            st.markdown(f"- ✅ **{name}** → `{filename}` ({len(chunk):,} rows, {pct:.1f}%)")
 
-        # Display created datasets
-        for ds_id, name, nrows, fname in created:
-            st.markdown(f"- ✅ **{name}** → `{fname}` ({nrows:,} rows)")
-
-        # Also save legacy files for backward compat if 3-way split
-        if len(names) == 3:
-            _save_legacy_aliases(splits)
+        # Legacy aliases for backward compatibility
+        (DATA_DIR / "cfm_pltv_train.csv").write_bytes((DATA_DIR / f"{name_train.lower().replace(' ','_')}.csv").read_bytes())
+        test_path = DATA_DIR / f"{name_test.lower().replace(' ','_')}.csv"
+        if test_path.exists():
+            (DATA_DIR / "cfm_pltv_test.csv").write_bytes(test_path.read_bytes())
 
         return True
 
     except Exception as e:
-        st.error(f"❌ Error: {str(e)}")
+        st.error(f"❌ Error saving: {str(e)}")
         return False
 
 
-def _save_legacy_aliases(splits):
-    """Save legacy cfm_pltv_train/test1/test2 aliases for backward compatibility."""
-    legacy_map = [
-        ("cfm_pltv_train.csv", 0),
-        ("cfm_pltv_test1.csv", 1),
-        ("cfm_pltv_test2.csv", 2),
-    ]
-    for fname, idx in legacy_map:
-        if idx < len(splits):
-            path = DATA_DIR / fname
-            splits[idx][1].to_csv(path, index=False)
+def regenerate_all_caches():
+    """
+    Clear all Streamlit cache_data entries and reset session-state dataset
+    bindings so every page reloads fresh data on next visit.
+    """
+    import streamlit as st
+    # Clear all @st.cache_data caches (covers _load_csv and any other cached loaders)
+    st.cache_data.clear()
+    # Drop the in-memory registry mirror so it reloads from disk
+    for key in ["_ds_registry", "current_dataset_id", "actual_row_count",
+                "model", "model_features", "loaded_model", "loaded_model_metadata"]:
+        st.session_state.pop(key, None)
 
 
 def check_data_exists() -> bool:

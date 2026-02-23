@@ -33,7 +33,8 @@ if st.session_state.get("data_missing", False):
     st.stop()
 
 df = get_data()
-st.caption(f"Training data: **{len(df):,}** rows (2025-12-16 to 2026-01-08)")
+_ds_id = st.session_state.get("current_dataset_id", "")
+st.caption(f"Dataset: **{_ds_id}** — **{len(df):,}** rows")
 
 render_report_md(REPORTS_DIR / "feature_store_overview.md", "📄 Feature Store Report")
 

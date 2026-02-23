@@ -168,6 +168,10 @@ def render_report_md(report_path, expander_label: str = "📄 Full Report", expa
 # ---------------------------------------------------------------------------
 def render_sidebar():
     """Render the shared sidebar controls: custom navigation with emojis, training data config."""
+    # Auto-load default model on first page visit (idempotent)
+    from model_registry import auto_load_default_model
+    auto_load_default_model()
+
     # Increase sidebar font size (+2px)
     st.markdown("""
         <style>
@@ -276,13 +280,39 @@ def render_sidebar():
 # ---------------------------------------------------------------------------
 def get_data() -> pd.DataFrame:
     """Load data from the Dataset Registry (selected in sidebar).
-    Every page uses the dataset bound to it via the registry sidebar."""
-    ds_id = st.session_state.get("current_dataset_id")
-    if not ds_id:
-        st.error("No dataset selected. Please select a dataset from the **📚 Dataset Registry** in the sidebar.")
-        st.stop()
+    Auto-defaults to cfm_pltv_train if no dataset is bound."""
+    from dataset_registry import load_dataset, list_datasets
 
-    from dataset_registry import load_dataset
+    ds_id = st.session_state.get("current_dataset_id")
+
+    # Auto-resolve: prefer cfm_pltv_train, then any registered train-role dataset
+    if not ds_id:
+        all_ds = list_datasets()
+        # Priority 1: exact name match
+        for candidate in ("cfm_pltv_train", "cfm_pltv"):
+            if candidate in all_ds:
+                ds_id = candidate
+                break
+        # Priority 2: role == 'train'
+        if not ds_id:
+            for did, meta in all_ds.items():
+                if meta.get("role") == "train":
+                    ds_id = did
+                    break
+        # Priority 3: first available
+        if not ds_id and all_ds:
+            ds_id = next(iter(all_ds))
+        # Fallback: legacy file
+        if not ds_id:
+            legacy = DATA_DIR / "cfm_pltv_train.csv"
+            if legacy.exists():
+                st.session_state["current_dataset_id"] = "cfm_pltv_train"
+                ds_id = "cfm_pltv_train"
+        if not ds_id:
+            st.error("No dataset found. Please upload a dataset on the **� Data Upload** page.")
+            st.stop()
+        st.session_state["current_dataset_id"] = ds_id
+
     mr = st.session_state.get("max_rows", 0)
     df = load_dataset(ds_id, max_rows=mr)
     st.session_state["actual_row_count"] = len(df)
@@ -403,3 +433,117 @@ def get_flat_selected_features() -> tuple:
             else:
                 num.append(f)
     return num, cat
+
+
+# ---------------------------------------------------------------------------
+# Dataset role helpers
+# ---------------------------------------------------------------------------
+def list_datasets_by_role() -> dict:
+    """
+    Return a dict mapping role -> (dataset_name, path, size_mb, mtime).
+    Roles: 'train', 'test', 'recent'.
+    Falls back to filename-based detection if registry metadata is missing.
+    Excludes D135 part files.
+    """
+    roles: dict = {"train": None, "test": None, "recent": None}
+
+    # First pass: registry metadata
+    try:
+        from dataset_registry import list_datasets
+        for ds_id, meta in list_datasets().items():
+            role = meta.get("role")
+            fname = meta.get("filename", "")
+            path = DATA_DIR / fname
+            if not path.exists():
+                continue
+            if role in roles:
+                roles[role] = {
+                    "name": meta["name"],
+                    "path": str(path),
+                    "size_mb": meta.get("size_mb", path.stat().st_size / 1e6),
+                    "mtime": path.stat().st_mtime,
+                    "split_info": meta.get("split_info", ""),
+                }
+    except Exception:
+        pass
+
+    # Second pass: filename-based fallback for any role still missing
+    fallback_map = {
+        "train":  ["cfm_pltv_train.csv"],
+        "test":   ["cfm_pltv_test.csv", "cfm_pltv_test1.csv"],
+        "recent": ["cfm_pltv_recent.csv"],
+    }
+    for role, candidates in fallback_map.items():
+        if roles[role] is None:
+            for fname in candidates:
+                p = DATA_DIR / fname
+                if p.exists():
+                    roles[role] = {
+                        "name": p.stem,
+                        "path": str(p),
+                        "size_mb": round(p.stat().st_size / 1e6, 1),
+                        "mtime": p.stat().st_mtime,
+                        "split_info": "",
+                    }
+                    break
+
+    return roles
+
+
+def render_dataset_role_selector(
+    available_roles: list,
+    default_role: str = "train",
+    key_prefix: str = "ds_role",
+) -> tuple:
+    """
+    Render a Train / Test / Recent tab selector for pages that support multiple dataset roles.
+    Returns (selected_role, dataset_info_dict_or_None).
+
+    available_roles: subset of ['train', 'test', 'recent'] to show.
+    """
+    role_meta = list_datasets_by_role()
+
+    role_labels = {
+        "train":  "🏋️ Train (in-sample)",
+        "test":   "🧪 Test (holdout)",
+        "recent": "🆕 Recent (live scoring)",
+    }
+    role_descriptions = {
+        "train":  "Mature users (≥30d), 80% split — used for model training and all analysis pages.",
+        "test":   "Mature users (≥30d), 20% holdout — unbiased evaluation of model performance.",
+        "recent": "Users installed <30d ago — LTV30 not yet realized. Score with trained model only.",
+    }
+
+    tabs = st.tabs([role_labels[r] for r in available_roles])
+    selected_role = st.session_state.get(f"{key_prefix}_role", default_role)
+
+    for i, (tab, role) in enumerate(zip(tabs, available_roles)):
+        with tab:
+            st.caption(role_descriptions[role])
+            info = role_meta.get(role)
+            if info is None:
+                st.warning(
+                    f"No **{role}** dataset found. "
+                    "Upload a new dataset on the **📤 Data Upload** page to generate it automatically."
+                )
+            else:
+                st.caption(
+                    f"**{info['name']}** — {info['size_mb']:.1f} MB"
+                    + (f" | {info['split_info']}" if info["split_info"] else "")
+                )
+            # Track which tab is active via a hidden selectbox trick
+            if st.session_state.get(f"{key_prefix}_active_tab") == i:
+                selected_role = role
+                st.session_state[f"{key_prefix}_role"] = role
+
+    # Streamlit tabs don't expose active index natively — use a selectbox as fallback
+    chosen_role = st.selectbox(
+        "Dataset role",
+        available_roles,
+        index=available_roles.index(default_role) if default_role in available_roles else 0,
+        format_func=lambda r: role_labels[r],
+        key=f"{key_prefix}_select",
+        label_visibility="collapsed",
+    )
+    info = role_meta.get(chosen_role)
+    return chosen_role, info

@@ -32,7 +32,8 @@ if report_path.exists():
         st.markdown(report_path.read_text(encoding="utf-8"))
 
 df = get_data()
-st.caption(f"Training data: **{len(df):,}** rows (2025-12-16 to 2026-01-08)")
+_ds_id = st.session_state.get("current_dataset_id", "")
+st.caption(f"Dataset: **{_ds_id}** — **{len(df):,}** rows")
 
 cur = get_currency_info()
 

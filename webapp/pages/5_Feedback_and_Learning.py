@@ -16,7 +16,7 @@ from shared import render_sidebar, render_top_menu, get_data, format_currency, c
 render_top_menu()
 render_sidebar()
 
-st.title("� Cohort Stability")
+st.title("📉 Cohort Stability")
 
 if st.session_state.get("data_missing", False):
     st.warning("⚠️ No training data found")
@@ -24,7 +24,8 @@ if st.session_state.get("data_missing", False):
     st.stop()
 
 df = get_data()
-st.caption(f"Training data: **{len(df):,}** rows (2025-12-16 to 2026-01-08)")
+_ds_id = st.session_state.get("current_dataset_id", "")
+st.caption(f"Dataset: **{_ds_id}** — **{len(df):,}** rows")
 
 report_path = REPORTS_DIR / "feedback_stub.md"
 if report_path.exists():

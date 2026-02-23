@@ -62,10 +62,12 @@ def get_registry() -> dict:
 
 # ── Dataset CRUD ───────────────────────────────────────────────────
 def register_dataset(name: str, filename: str, rows: int, columns: int,
-                     source_file: str = "", split_info: str = "") -> str:
+                     source_file: str = "", split_info: str = "",
+                     extra_meta: dict = None) -> str:
     """
     Register a new dataset.
     Returns the dataset ID.
+    extra_meta: optional dict of additional fields to store (e.g. role, dump_date, cutoff).
     """
     reg = _load_registry()
     ds_id = name.lower().replace(" ", "_").replace("-", "_")
@@ -77,7 +79,7 @@ def register_dataset(name: str, filename: str, rows: int, columns: int,
         ds_id = f"{base_id}_{counter}"
         counter += 1
 
-    reg["datasets"][ds_id] = {
+    entry = {
         "name": name,
         "filename": filename,
         "rows": rows,
@@ -87,6 +89,9 @@ def register_dataset(name: str, filename: str, rows: int, columns: int,
         "created_at": datetime.now().isoformat(),
         "size_mb": round(os.path.getsize(DATA_DIR / filename) / 1e6, 1) if (DATA_DIR / filename).exists() else 0,
     }
+    if extra_meta:
+        entry.update(extra_meta)
+    reg["datasets"][ds_id] = entry
     _save_registry(reg)
     _sync_to_session(reg)
     return ds_id
@@ -142,7 +147,8 @@ def list_datasets() -> dict:
 
 # ── Page bindings ──────────────────────────────────────────────────
 def get_page_dataset(page_id: str) -> str | None:
-    """Get the dataset ID bound to a page. Returns None if no binding."""
+    """Get the dataset ID bound to a page.
+    Falls back to registry default_dataset, then cfm_pltv_train, then first available."""
     reg = get_registry()
     ds_id = reg.get("page_bindings", {}).get(page_id)
     # Validate it still exists
@@ -150,7 +156,13 @@ def get_page_dataset(page_id: str) -> str | None:
         fpath = DATA_DIR / reg["datasets"][ds_id]["filename"]
         if fpath.exists():
             return ds_id
-    return None
+    # Fallback: use registry default
+    datasets = list_datasets()
+    for candidate in (reg.get("default_dataset"), "cfm_pltv_train"):
+        if candidate and candidate in datasets:
+            return candidate
+    # Last resort: first available
+    return next(iter(datasets), None)
 
 
 def set_page_dataset(page_id: str, ds_id: str):
@@ -228,9 +240,13 @@ def render_dataset_sidebar(page_id: str):
     ds_ids = list(ds_options.keys())
     ds_labels = list(ds_options.values())
 
-    # Default index
+    # Default index — prefer cfm_pltv_train
+    reg_snap = get_registry()
+    _default = reg_snap.get("default_dataset", "cfm_pltv_train")
     if current_ds and current_ds in ds_ids:
         default_idx = ds_ids.index(current_ds)
+    elif _default in ds_ids:
+        default_idx = ds_ids.index(_default)
     else:
         default_idx = 0
 
@@ -305,26 +321,38 @@ def check_deleted_dataset_warning(page_id: str) -> bool:
 # ── Migration: auto-register existing files ────────────────────────
 def migrate_existing_datasets():
     """
-    Auto-register cfm_pltv_train.csv, test1, test2 if they exist
-    but aren't in the registry yet.
+    Auto-register the 3 canonical datasets (train/test/recent) if their CSV files
+    exist on disk but aren't in the registry yet. Skips legacy test1/test2 files.
     """
     reg = _load_registry()
     changed = False
 
-    legacy_files = {
-        "cfm_pltv_train": {"filename": "cfm_pltv_train.csv", "name": "Training (default)"},
-        "cfm_pltv_test1": {"filename": "cfm_pltv_test1.csv", "name": "Test 1 — OOT Near"},
-        "cfm_pltv_test2": {"filename": "cfm_pltv_test2.csv", "name": "Test 2 — OOT Far"},
+    canonical_files = {
+        "cfm_pltv_train": {
+            "filename": "cfm_pltv_train.csv",
+            "name": "Train — Mature users, 80% split",
+            "role": "train",
+        },
+        "cfm_pltv_test": {
+            "filename": "cfm_pltv_test.csv",
+            "name": "Test — Mature users, 20% holdout",
+            "role": "test",
+        },
+        "cfm_pltv_recent": {
+            "filename": "cfm_pltv_recent.csv",
+            "name": "Recent — Users installed <30d ago, no LTV30 yet",
+            "role": "recent",
+        },
     }
 
-    for ds_id, info in legacy_files.items():
+    for ds_id, info in canonical_files.items():
         fpath = DATA_DIR / info["filename"]
         if fpath.exists() and ds_id not in reg["datasets"]:
             try:
                 with open(fpath, encoding="utf-8") as fh:
                     header = fh.readline()
                     ncols = len(header.split(","))
-                    nrows = sum(1 for _ in fh)  # remaining lines after header
+                    nrows = sum(1 for _ in fh)
             except Exception:
                 nrows = 0
                 ncols = 0
@@ -333,12 +361,18 @@ def migrate_existing_datasets():
                 "filename": info["filename"],
                 "rows": nrows,
                 "columns": ncols,
-                "source_file": "legacy",
-                "split_info": "auto-migrated",
+                "source_file": "auto-migrated",
+                "split_info": "",
                 "created_at": datetime.now().isoformat(),
                 "size_mb": round(os.path.getsize(fpath) / 1e6, 1),
+                "role": info["role"],
             }
             changed = True
+
+    # Ensure default_dataset is set
+    if "default_dataset" not in reg:
+        reg["default_dataset"] = "cfm_pltv_train"
+        changed = True
 
     if changed:
         _save_registry(reg)
