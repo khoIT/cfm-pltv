@@ -15,7 +15,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shared import (
-    render_sidebar, render_top_menu, get_data, convert_vnd, get_currency_info,
+    render_sidebar, render_top_menu, get_data, get_active_model, convert_vnd, get_currency_info,
     format_currency, REPORTS_DIR,
     BASELINE_HEURISTICS, compute_baseline_ranking,
 )
@@ -70,11 +70,10 @@ df_eval = get_data()
 st.caption(f"Dataset: **{len(df_eval):,}** rows (from Dataset Registry)")
 
 # ── model predictions ─────────────────────────────────────────────
-use_live = "model" in st.session_state
+model, model_feats = get_active_model()
+use_live = model is not None
 
 if use_live:
-    model = st.session_state["model"]
-    model_feats = st.session_state.get("model_features", [])
     num_feats = [f for f in model_feats if f not in ("media_source", "first_country_code", "first_os", "first_login_channel")]
     cat_feats = [f for f in model_feats if f in ("media_source", "first_country_code", "first_os", "first_login_channel")]
 

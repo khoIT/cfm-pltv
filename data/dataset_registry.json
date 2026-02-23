@@ -73,7 +73,7 @@
   },
   "page_bindings": {
     "1_Decision_Definition": "cfm_train",
-    "3c_Temporal_Analysis": "cfm_pltv_train",
+    "3c_Temporal_Analysis": "cfm_train",
     "0_Data_Upload": "cfm_train",
     "2_Features_and_Model": "cfm_train",
     "3_Evaluation_and_Insights": "cfm_train",
@@ -86,6 +86,9 @@
     "3e_Causal_Inference": "cfm_pltv_train",
     "3f_Seed_Optimization": "cfm_pltv_train",
     "3g_Real_Time_Scoring": "cfm_pltv_train",
-    "6_Summary": "cfm_pltv_train"
+    "6_Summary": "cfm_pltv_train",
+    "3h_Whale_Segmentation": "cfm_demo",
+    "3i_Time_to_First_Purchase": "cfm_train",
+    "3k_Churn_Prediction": "cfm_train"
   }
 }

@@ -137,6 +137,18 @@ render_report_md(REPORTS_DIR / "Time_to_First_Purchase.md", "📄 Full Time-to-F
 # ── KPIs ───────────────────────────────────────────────────────────
 st.markdown("---")
 st.header("📊 Key Metrics")
+st.info(
+    """💡 **Why does first-purchase timing matter?**
+
+In F2P games, **when** a user makes their first purchase is one of the strongest predictors of their lifetime value.
+Users who pay on Day 0 (same session as install) typically have **2–5× higher LTV** than those who wait until D4–D7.
+
+This page helps you answer three critical questions:
+1. **When is the "golden window"?** — The optimal time to show a first-purchase offer.
+2. **Are late converters worth less?** — If D4–D7 payers have much lower LTV, your offers are working but attracting low-intent buyers.
+3. **Where are the whales?** — Which conversion window produces the most top spenders?""",
+    icon="⏱️"
+)
 
 d0_pct = seg_stats[seg_stats["timing_seg"] == "D0 (same-day)"]["pct_payers"].values
 d0_pct = d0_pct[0] if len(d0_pct) > 0 else 0
@@ -161,6 +173,12 @@ with k4:
 # ── Survival Curve ─────────────────────────────────────────────────
 st.markdown("---")
 st.header("📈 Payer Conversion Survival Curve")
+st.markdown(
+    "**Left chart:** Shows cumulative % of payers who have made their first purchase by each day. "
+    "The steeper the curve rises early, the more your game drives **impulse monetization**. "
+    "The 80% line marks when you've captured most conversions. "
+    "**Right chart:** Shows what % of all payers fall into each conversion window."
+)
 col1, col2 = st.columns(2)
 
 with col1:
@@ -205,9 +223,15 @@ with col2:
     )
     st.plotly_chart(fig_seg, use_container_width=True)
 
-# ── LTV30 by Timing ────────────────────────────────────────────────
+# ── LTV30 by Timing ──────────────────────────────────────
 st.markdown("---")
 st.header("💰 LTV30 by First-Purchase Timing")
+st.markdown(
+    "**Left chart:** Average LTV30 by conversion window. If D0 is dramatically higher, it confirms that "
+    "same-day converters are inherently more motivated spenders — not just responding to offers. "
+    "**Right chart:** Day-by-day LTV decline shows exactly when value drops off, helping you set "
+    "the optimal deadline for first-purchase promotions."
+)
 col3, col4 = st.columns(2)
 
 with col3:
@@ -258,9 +282,22 @@ with col4:
         )
         st.plotly_chart(fig_day, use_container_width=True)
 
-# ── Whale Rate by Timing ────────────────────────────────────────────
+# ── Whale Rate by Timing ──────────────────────────────────
 st.markdown("---")
 st.header("🐋 Whale Rate by Conversion Window")
+st.info(
+    """💡 **Why whale rate by timing matters:**
+
+Not all payers are equal. This chart shows what % of payers in each conversion window become **whales** (top 5% LTV30).
+
+- **D0 whale rate >> D4–D7 whale rate:** Confirms that early converters are your whale pipeline. Protect this segment.
+- **If D4–D7 has similar whale rate:** Your later-stage offers are successfully converting high-value users — keep them.
+- **If D4–D7 whale rate ≈ 0:** Late converters are almost never whales. Offers past D3 mainly capture low-value impulse buys.
+
+**Engagement chart (right):** Shows whether late converters play differently. If D4–D7 has low games/active_days, 
+they are likely responding to a push notification — not genuinely engaged.""",
+    icon="🐋"
+)
 col5, col6 = st.columns(2)
 
 with col5:
@@ -314,14 +351,77 @@ st.dataframe(tbl[["Segment", "Users", "% of Payers", f"Avg LTV30 ({cur['symbol']
                    f"Median LTV30 ({cur['symbol']})", "Rev Share %"]],
              use_container_width=True, hide_index=True)
 
-# ── Insights ───────────────────────────────────────────────────────
+# ── Monetization Opportunity ─────────────────────────────
 st.markdown("---")
-st.header("💡 Insights")
-st.markdown(f"- **{d0_pct:.1f}% of payers convert on D0** — arrive with purchase intent, highest LTV")
-st.markdown(f"- **{d3_cum:.1f}% of payers have converted by D3** — validates D3 as primary scoring window")
-st.markdown(f"- **D0 payers have {ratio:.1f}× higher avg LTV30** than D4–D7 payers")
-st.markdown("- D4–D7 converters are likely nudged by offers — lower intrinsic motivation → lower LTV")
-st.markdown("### 🎯 Recommended Actions")
-st.markdown("- Show first purchase offer when `games_played ≥ 3` in first session")
-st.markdown("- Send D2–D3 push notification to high-engagement non-converters")
-st.markdown("- Use D0 conversion rate as a primary UA campaign quality signal")
+st.header("💵 Monetization Opportunity Sizing")
+
+# Calculate opportunity: what if we could shift 10% of D4-D7 payers to D0-D3 behavior?
+d03_avg = seg_stats[seg_stats["timing_seg"].isin(["D0 (same-day)", "D1–D3"])]["avg_ltv30"].mean()
+d47_users = seg_stats[seg_stats["timing_seg"] == "D4–D7"]["users"].values
+d47_users = d47_users[0] if len(d47_users) > 0 else 0
+shift_users = int(d47_users * 0.1)
+incremental_rev = shift_users * (d03_avg - d47_avg) if d47_avg > 0 else 0
+
+opp_col1, opp_col2, opp_col3 = st.columns(3)
+with opp_col1:
+    st.metric("🎯 Golden Window", "D0–D3",
+              f"{d3_cum:.0f}% of conversions happen here")
+with opp_col2:
+    non_payer_count = n_total - n_payers
+    st.metric("Non-Payers (D30)", f"{non_payer_count:,}",
+              f"{non_payer_count/n_total*100:.1f}% of all users")
+with opp_col3:
+    st.metric("If 10% of D4–D7 shifted to D0–D3",
+              format_currency(convert_vnd(incremental_rev, cur["code"]), cur["code"]),
+              f"{shift_users:,} users × higher LTV")
+
+st.markdown(
+    f"> **Opportunity:** There are **{non_payer_count:,} non-payers** in the dataset. "
+    f"Even converting **1% more** at D0–D3 LTV would add "
+    f"**{format_currency(convert_vnd(int(non_payer_count * 0.01) * d03_avg, cur['code']), cur['code'])}** "
+    f"in incremental revenue. The first-purchase offer timing is your biggest monetization lever."
+)
+
+# ── Insights & Playbook ───────────────────────────────────
+st.markdown("---")
+st.header("💡 Key Findings")
+
+find_col1, find_col2 = st.columns(2)
+with find_col1:
+    st.markdown(f"""
+**Conversion Timing:**
+- **{d0_pct:.1f}%** of payers convert on D0 — arrive with purchase intent
+- **{d3_cum:.1f}%** have converted by D3 — validates D3 as primary scoring window
+- D0 payers have **{ratio:.1f}×** higher avg LTV30 than D4–D7 payers
+""")
+with find_col2:
+    st.markdown("""
+**Behavioral Patterns:**
+- D4–D7 converters are likely nudged by offers — lower intrinsic motivation = lower LTV
+- Late converters have lower engagement (fewer games, fewer active days)
+- D0 conversion rate is the best single proxy for UA campaign quality
+""")
+
+st.markdown("### 🎯 First-Purchase Optimization Playbook")
+play_col1, play_col2, play_col3 = st.columns(3)
+with play_col1:
+    st.markdown("""
+**📣 D0: Impulse Window**
+- Show a **starter pack** after the 3rd game in session 1
+- Use price anchoring (show a premium pack first, then a "value" pack)
+- D0 converters are your future whales — don't discount too aggressively
+""")
+with play_col2:
+    st.markdown("""
+**⏰ D1–D3: Engagement Window**
+- Send push notification to high-engagement non-payers on D2
+- Offer a **limited-time** first-purchase bonus (expires D3)
+- Personalize: skilled players get competitive items, casual players get cosmetics
+""")
+with play_col3:
+    st.markdown("""
+**🚨 D4–D7: Last Chance Window**
+- These users are unlikely to become whales — optimize for **any conversion**
+- Deep discount (50%+ off) is acceptable here since LTV is already low
+- Use D0 conversion rate as your primary **UA campaign quality signal**
+""")

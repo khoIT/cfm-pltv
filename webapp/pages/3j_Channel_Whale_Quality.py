@@ -93,6 +93,19 @@ st.markdown(
     "Evaluate UA channels by **whale rate** — the fraction of acquired users who become "
     "top revenue contributors. Goes beyond CPI and ROAS to measure true acquisition quality."
 )
+st.info(
+    """💡 **Why whale rate matters more than CPI or ROAS:**
+
+Traditional UA metrics (CPI, ROAS) measure cost efficiency and broad return. But in whale-driven games,
+**90%+ of revenue comes from <5% of users**. A channel with low CPI but zero whales is a money pit.
+
+- **Whale Rate** = % of users from a channel who become top 5% spenders.
+- **Organic benchmark** = the whale rate of organic (unpaid) users. Any paid channel should aim to match or exceed this.
+- **ARPU** = Average Revenue Per User over 30 days. High ARPU + high whale rate = premium channel.
+
+This page helps you answer: *"Which channels deliver users who actually become whales, not just installs?"*""",
+    icon="📡"
+)
 
 cur = get_currency_info()
 
@@ -184,20 +197,49 @@ with col2:
 
 # ── Whale Rate vs ARPU Scatter ──────────────────────────────────────
 st.markdown("---")
-st.header("📊 Whale Rate vs ARPU — Channel Positioning")
+st.header("📊 Channel Quality Matrix")
+st.info(
+    """💡 **How to read the Channel Quality Matrix:**
+
+This scatter plot positions each channel by **Whale Rate** (X-axis) and **ARPU** (Y-axis).
+Bubble size = user volume. The quadrants tell you what to do:
+
+- **Top-Right (⭐ Stars):** High whale rate + high ARPU → Scale aggressively. These are your best channels.
+- **Top-Left (💨 Cash Cows):** High ARPU but low whale rate → Revenue comes from many small payers, not whales. Good for volume.
+- **Bottom-Right (🌱 Whale Farms):** High whale rate but low ARPU → Whales are present but overall user base is low-value. Tighten targeting.
+- **Bottom-Left (❌ Cut):** Low whale rate + low ARPU → Reduce or cut spend on these channels.""",
+    icon="📊"
+)
+
+arpu_disp = by_channel["arpu_d30"].apply(lambda v: convert_vnd(v, cur["code"]))
+median_whale = by_channel["whale_rate_%"].median()
+median_arpu = arpu_disp.median()
 
 fig_scatter = px.scatter(
     by_channel,
-    x="whale_rate_%", y=by_channel["arpu_d30"].apply(lambda v: convert_vnd(v, cur["code"])),
+    x="whale_rate_%", y=arpu_disp,
     size="users", color="media_source",
     text="media_source",
     labels={"x": "Whale Rate (%)", "y": f"ARPU D30 ({cur['symbol']})",
             "media_source": "Channel"},
     title="Channel Quality Matrix: Whale Rate vs ARPU (bubble = user volume)",
-    height=450,
+    height=500,
 )
 fig_scatter.update_traces(textposition="top center")
 fig_scatter.update_layout(showlegend=False)
+
+# Add quadrant lines and labels
+fig_scatter.add_hline(y=median_arpu, line_dash="dash", line_color="gray", opacity=0.5)
+fig_scatter.add_vline(x=median_whale, line_dash="dash", line_color="gray", opacity=0.5)
+fig_scatter.add_annotation(x=by_channel["whale_rate_%"].max() * 0.95, y=arpu_disp.max() * 0.95,
+                           text="⭐ Stars", showarrow=False, font=dict(size=14, color="green"))
+fig_scatter.add_annotation(x=by_channel["whale_rate_%"].min() * 1.05, y=arpu_disp.max() * 0.95,
+                           text="💨 Cash Cows", showarrow=False, font=dict(size=14, color="#e67e22"))
+fig_scatter.add_annotation(x=by_channel["whale_rate_%"].max() * 0.95, y=arpu_disp.min() * 1.3,
+                           text="🌱 Whale Farms", showarrow=False, font=dict(size=14, color="#3498db"))
+fig_scatter.add_annotation(x=by_channel["whale_rate_%"].min() * 1.05, y=arpu_disp.min() * 1.3,
+                           text="❌ Cut", showarrow=False, font=dict(size=14, color="#e74c3c"))
+
 st.plotly_chart(fig_scatter, use_container_width=True)
 
 # ── Payer Rate vs Whale Rate ────────────────────────────────────────
@@ -208,9 +250,10 @@ with col3:
     fig_payer = go.Figure()
     fig_payer.add_trace(go.Bar(
         x=by_channel["media_source"], y=by_channel["payer_rate_%"],
-        marker_color=channel_colors, name="Payer Rate",
+        marker_color=px.colors.qualitative.Set2[:len(by_channel)],
         text=by_channel["payer_rate_%"].apply(lambda v: f"{v:.1f}%"),
         textposition="outside",
+        name="Payer Rate",
     ))
     fig_payer.update_layout(
         title="Payer Rate (D30) by Channel",
@@ -292,18 +335,49 @@ else:
                    "Mega-Whale Rate %", f"ARPU ({cur['symbol']})", "Rev Share %"]
 st.dataframe(tbl, use_container_width=True, hide_index=True)
 
-# ── Insights ───────────────────────────────────────────────────────
+# ── Key Findings & Budget Playbook ─────────────────────
 st.markdown("---")
-st.header("💡 Insights")
-if best_whale_ch is not None:
-    st.markdown(f"- **Best whale rate channel:** {best_whale_ch['media_source']} "
-                f"({best_whale_ch['whale_rate_%']:.2f}% whale rate)")
-if organic_whale_rate:
-    st.markdown(f"- **Organic benchmark:** {organic_whale_rate:.2f}% whale rate — "
-                "channels above this deliver organic-quality users at paid scale")
-st.markdown("- **Whale rate ≠ payer rate** — a channel can have high payer rate but low whale rate")
-st.markdown("- **Revenue share** is the ultimate channel quality metric — not just volume")
-st.markdown("### 🎯 Recommended Actions")
-st.markdown("- Report **whale rate** alongside CPI and ROAS in all campaign dashboards")
-st.markdown("- Shift budget toward channels with whale rate ≥ 80% of organic benchmark")
-st.markdown("- Build channel-specific lookalike seeds from each channel's whale users")
+st.header("💡 Key Findings")
+
+find_col1, find_col2 = st.columns(2)
+with find_col1:
+    st.markdown("**Channel Performance:**")
+    if best_whale_ch is not None:
+        st.markdown(f"- Best whale rate: **{best_whale_ch['media_source']}** "
+                    f"({best_whale_ch['whale_rate_%']:.2f}%)")
+    if organic_whale_rate:
+        st.markdown(f"- Organic benchmark: **{organic_whale_rate:.2f}%** whale rate")
+        above_organic = by_channel[by_channel["whale_rate_%"] >= organic_whale_rate]
+        st.markdown(f"- **{len(above_organic)}** channels match or exceed organic quality")
+with find_col2:
+    st.markdown("**Key Principles:**")
+    st.markdown("- **Whale rate ≠ payer rate** — high payers ≠ high whales")
+    st.markdown("- **Revenue share** is the ultimate quality metric")
+    st.markdown("- A channel with 2× whale rate at 1.5× CPI is a **better deal**")
+
+st.markdown("### 🎯 UA Budget Allocation Playbook")
+budget_col1, budget_col2, budget_col3 = st.columns(3)
+with budget_col1:
+    st.markdown("""
+**🚀 Scale (⭐ Stars)**
+- Whale rate ≥ organic AND high ARPU
+- Increase budget 20–50%
+- Build dedicated lookalike seeds from these channels' whales
+- Monitor weekly for quality degradation at higher spend
+""")
+with budget_col2:
+    st.markdown("""
+**🔍 Optimize (🌱 Whale Farms)**
+- High whale rate but low overall ARPU
+- Tighten targeting to reduce non-payer volume
+- A/B test creative focused on high-intent audiences
+- Report whale rate alongside CPI in dashboards
+""")
+with budget_col3:
+    st.markdown("""
+**✂️ Reduce (❌ Cut)**
+- Low whale rate AND low ARPU
+- Cut budget by 30–50%
+- Redirect spend to Star channels
+- Only keep if CPI is extremely low and volume is needed for brand
+""")

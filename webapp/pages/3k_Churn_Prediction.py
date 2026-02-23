@@ -445,10 +445,13 @@ This is the basis for the recommendation: *trigger a retention offer when churn_
         )
         st.plotly_chart(fig_txn_ltv, use_container_width=True)
 
-# ── Churn Score Distribution ────────────────────────────────────────
 if "churn_score" in payers.columns:
     st.markdown("---")
     st.header("📊 Churn Risk Score Distribution")
+    st.markdown(
+        "Each payer gets a **churn risk score** from 0 (safe) to 1 (high risk). "
+        "The histogram below shows how scores distribute across payer segments."
+    )
     fig_hist = px.histogram(
         payers, x="churn_score", color="payer_seg",
         nbins=40, barmode="overlay", opacity=0.7,
@@ -459,6 +462,69 @@ if "churn_score" in payers.columns:
     )
     fig_hist.update_layout(legend=dict(orientation="h", y=-0.2))
     st.plotly_chart(fig_hist, use_container_width=True)
+
+    # Revenue at Risk by churn score bucket
+    st.markdown("---")
+    st.header("⚠️ Revenue at Risk by Churn Score")
+    st.info(
+        """💡 **What is Revenue at Risk?**
+
+This shows **how much LTV30 revenue** sits in each churn risk bucket.
+Users with score > 0.7 are high risk — the revenue they represent is "at risk" of being lost.
+
+- **If most revenue is in low-risk buckets (0–0.3):** Your payer base is healthy. Focus on growth.
+- **If significant revenue is in high-risk buckets (0.7–1.0):** Urgent retention intervention needed.
+- **Use this to size your retention budget:** If ₫500M is at risk, spending ₫50M on retention offers is a 10:1 potential ROI.""",
+        icon="⚠️"
+    )
+
+    # Bucket payers by churn score
+    risk_buckets = pd.cut(payers["churn_score"], bins=[0, 0.3, 0.5, 0.7, 1.0],
+                          labels=["Low (0–0.3)", "Medium (0.3–0.5)", "High (0.5–0.7)", "Critical (0.7–1.0)"])
+    risk_df = payers.groupby(risk_buckets, observed=True).agg(
+        users=("ltv30", "count"),
+        total_ltv30=("ltv30", "sum"),
+        avg_ltv30=("ltv30", "mean"),
+    ).reset_index()
+    risk_df.columns = ["Risk Bucket", "Users", "Total LTV30", "Avg LTV30"]
+    total_payer_rev = payers["ltv30"].sum()
+    risk_df["Rev Share %"] = (risk_df["Total LTV30"] / total_payer_rev * 100).round(1)
+
+    col_risk1, col_risk2 = st.columns(2)
+    with col_risk1:
+        risk_colors = ["#2ecc71", "#f1c40f", "#e67e22", "#e74c3c"]
+        fig_risk = go.Figure()
+        for i, row in risk_df.iterrows():
+            fig_risk.add_trace(go.Bar(
+                x=[str(row["Risk Bucket"])],
+                y=[convert_vnd(row["Total LTV30"], cur["code"])],
+                marker_color=risk_colors[i % len(risk_colors)],
+                text=[format_currency(convert_vnd(row["Total LTV30"], cur["code"]), cur["code"])],
+                textposition="outside",
+            ))
+        fig_risk.update_layout(
+            title=f"Total LTV30 at Risk by Churn Score ({cur['symbol']})",
+            yaxis_title=f"Total LTV30 ({cur['symbol']})", height=400,
+            showlegend=False,
+        )
+        st.plotly_chart(fig_risk, use_container_width=True)
+
+    with col_risk2:
+        risk_tbl = risk_df.copy()
+        risk_tbl["Total LTV30"] = risk_tbl["Total LTV30"].apply(
+            lambda v: format_currency(convert_vnd(v, cur["code"]), cur["code"]))
+        risk_tbl["Avg LTV30"] = risk_tbl["Avg LTV30"].apply(
+            lambda v: format_currency(convert_vnd(v, cur["code"]), cur["code"]))
+        st.dataframe(risk_tbl, use_container_width=True, hide_index=True)
+
+        critical_rev = risk_df[risk_df["Risk Bucket"] == "Critical (0.7–1.0)"]["Total LTV30"].sum()
+        high_rev = risk_df[risk_df["Risk Bucket"].isin(["High (0.5–0.7)", "Critical (0.7–1.0)"])]["Total LTV30"].sum()
+        st.markdown(
+            f"> **{format_currency(convert_vnd(high_rev, cur['code']), cur['code'])}** in LTV30 "
+            f"is in High/Critical risk buckets. "
+            f"A retention campaign recovering even 20% of this = "
+            f"**{format_currency(convert_vnd(high_rev * 0.2, cur['code']), cur['code'])}** saved."
+        )
 
 # ── Summary Table ───────────────────────────────────────────────────
 st.markdown("---")
@@ -473,14 +539,49 @@ tbl.columns = ["Segment", "Users", f"Avg Rev D7 ({cur['symbol']})",
                f"Avg LTV30 ({cur['symbol']})", "Churn Rate %"]
 st.dataframe(tbl, use_container_width=True, hide_index=True)
 
-# ── Insights ───────────────────────────────────────────────────────
+# ── Key Findings & Retention Playbook ─────────────────
 st.markdown("---")
-st.header("💡 Insights")
-st.markdown(f"- **{overall_churn:.1f}% of D7 payers** have low LTV30 — one-and-done purchases")
-st.markdown(f"- **Whale churn rate: {whale_churn:.1f}%** — even top payers have churn risk")
-st.markdown("- `txn_cnt_d7 ≥ 2` is the strongest retention signal — repeat purchase in D7 predicts continued spending")
-st.markdown("- `active_days_d7` and `games_d7` are leading indicators — disengagement precedes churn")
-st.markdown("### 🎯 Recommended Actions")
-st.markdown("- Trigger retention offer for payers with **churn_score > 0.7** and rev_d7 > ₫50,000")
-st.markdown("- A/B test: exclusive content vs discount offer vs social feature for at-risk whales")
-st.markdown("- Feed churn predictions back into pLTV model as a feature (Feedback & Learning loop)")
+st.header("💡 Key Findings")
+
+find_col1, find_col2 = st.columns(2)
+with find_col1:
+    st.markdown(f"""
+**Churn Landscape:**
+- **{overall_churn:.1f}%** of D7 payers have low LTV30 — one-and-done purchases
+- **Whale churn rate: {whale_churn:.1f}%** — even top payers have churn risk
+- `txn_cnt_d7 ≥ 2` is the strongest retention signal
+""")
+with find_col2:
+    st.markdown("""
+**Actionable Signals:**
+- `active_days_d7` and `games_d7` are leading indicators — disengagement precedes churn
+- Single-transaction payers have **~67% churn risk** — the 2nd purchase is the key milestone
+- Revenue-based features dominate the model but behavioral features are the **intervention levers**
+""")
+
+st.markdown("### 🎯 Payer Retention Playbook")
+play_col1, play_col2, play_col3 = st.columns(3)
+with play_col1:
+    st.markdown("""
+**🚨 Critical Risk (score > 0.7)**
+- Trigger **immediate retention offer** (discount or exclusive content)
+- For whales: assign to VIP account manager
+- For 1-txn payers: incentivize the 2nd purchase with a bundle
+- Time-limit offers to create urgency
+""")
+with play_col2:
+    st.markdown("""
+**⚠️ High Risk (score 0.5–0.7)**
+- Send personalized push notification on D8–D10
+- A/B test: exclusive content vs discount vs social feature
+- Monitor engagement daily — if games_d7 drops, escalate to Critical
+- Use in-game events to re-engage
+""")
+with play_col3:
+    st.markdown("""
+**✅ Low Risk (score < 0.5)**
+- No immediate intervention needed
+- Focus on **upsell** rather than retention
+- Feed churn predictions back into pLTV model (Feedback & Learning loop)
+- Track cohort over time to validate score calibration
+""")

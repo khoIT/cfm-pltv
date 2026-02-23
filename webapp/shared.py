@@ -309,6 +309,18 @@ def get_registry_path() -> tuple:
     return str(fpath), mtime
 
 
+def get_active_model():
+    """Return (model, model_features) from session state.
+    Checks 'model' (trained this session) first, then 'loaded_model' (loaded from registry).
+    Returns (None, []) if no model is available."""
+    if "model" in st.session_state:
+        return st.session_state["model"], st.session_state.get("model_features", [])
+    if "loaded_model" in st.session_state:
+        meta = st.session_state.get("loaded_model_metadata", {})
+        return st.session_state["loaded_model"], meta.get("features", [])
+    return None, []
+
+
 # ---------------------------------------------------------------------------
 # Currency formatting with USD/VND toggle
 # ---------------------------------------------------------------------------

@@ -15,7 +15,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shared import (
-    render_sidebar, render_top_menu, get_data, convert_vnd,
+    render_sidebar, render_top_menu, get_data, get_active_model, convert_vnd,
     get_currency_info, format_currency, REPORTS_DIR,
     BASELINE_HEURISTICS, compute_baseline_ranking,
     ALL_NUMERIC_FEATURES, ALL_CAT_FEATURES,
@@ -104,12 +104,11 @@ def prepare_features(df_test, model_feats):
 st.markdown("---")
 st.header("📈 Lift Curve: Test 1 vs Test 2")
 
-use_live = "model" in st.session_state
+model, model_feats = get_active_model()
+use_live = model is not None
 strategies = {}
 
 if use_live:
-    model = st.session_state["model"]
-    model_feats = st.session_state.get("model_features", [])
     model_label = f"XGBoost ({len(model_feats)}f)"
 
     X_t1 = prepare_features(df_t1, model_feats)

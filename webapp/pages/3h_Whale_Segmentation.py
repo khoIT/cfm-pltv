@@ -78,23 +78,67 @@ def compute_whale_metrics(csv_path: str, file_mtime: float):
     cluster_features = [c for c in ["games_d7", "active_days_d7", "win_rate_d7",
                                      "kd_d7", "max_level_seen_d7", "login_rows_d7"] if c in df.columns]
     cluster_df = None
+    pca_df = None
     if len(cluster_features) >= 3:
         from sklearn.preprocessing import StandardScaler
         from sklearn.cluster import KMeans
+        from sklearn.decomposition import PCA
         X = df[cluster_features].fillna(0).values
         scaler = StandardScaler()
         X_scaled = scaler.fit_transform(X)
         km = KMeans(n_clusters=4, random_state=42, n_init=10)
         df["cluster"] = km.fit_predict(X_scaled)
-        cluster_df = df.groupby("cluster").agg(
-            users=("ltv30", "count"),
-            avg_ltv30=("ltv30", "mean"),
-            avg_games=("games_d7", "mean") if "games_d7" in df.columns else ("ltv30", "count"),
-            avg_active_days=("active_days_d7", "mean") if "active_days_d7" in df.columns else ("ltv30", "count"),
-            payer_rate=("ltv30", lambda x: (x > 0).mean()),
-        ).reset_index()
+
+        # Per-cluster stats with all engagement features
+        agg_cl = {
+            "users": ("ltv30", "count"),
+            "avg_ltv30": ("ltv30", "mean"),
+            "payer_rate": ("ltv30", lambda x: (x > 0).mean()),
+            "whale_rate": ("ltv30", lambda x: (x >= p95).mean()),
+            "total_ltv30": ("ltv30", "sum"),
+        }
+        for c in cluster_features:
+            agg_cl[f"avg_{c}"] = (c, "mean")
+        cluster_df = df.groupby("cluster").agg(**agg_cl).reset_index()
         cluster_df = cluster_df.sort_values("avg_ltv30", ascending=False).reset_index(drop=True)
-        cluster_df["cluster_label"] = ["Cluster " + str(i+1) for i in range(len(cluster_df))]
+
+        # Auto-label clusters based on dominant traits
+        labels = []
+        for _, row in cluster_df.iterrows():
+            traits = []
+            if "avg_games_d7" in row and row["avg_games_d7"] > cluster_df["avg_games_d7"].median() * 1.3:
+                traits.append("High-Activity")
+            elif "avg_games_d7" in row and row["avg_games_d7"] < cluster_df["avg_games_d7"].median() * 0.5:
+                traits.append("Low-Activity")
+            if "avg_win_rate_d7" in row and row["avg_win_rate_d7"] > cluster_df["avg_win_rate_d7"].median() * 1.2:
+                traits.append("Skilled")
+            if "avg_active_days_d7" in row and row["avg_active_days_d7"] > cluster_df["avg_active_days_d7"].median() * 1.3:
+                traits.append("Engaged")
+            if row["whale_rate"] > cluster_df["whale_rate"].median() * 2:
+                traits.append("Whale-Rich")
+            if not traits:
+                traits.append("Average")
+            labels.append(" / ".join(traits[:2]))
+        cluster_df["cluster_label"] = labels
+        cluster_df["rev_share_%"] = (cluster_df["total_ltv30"] / total_rev * 100).round(1)
+
+        # PCA 2D projection for visualization
+        pca = PCA(n_components=2, random_state=42)
+        coords = pca.fit_transform(X_scaled)
+        # Sample for performance (max 5000 points)
+        sample_n = min(5000, len(df))
+        sample_idx = np.random.RandomState(42).choice(len(df), sample_n, replace=False)
+        pca_df = pd.DataFrame({
+            "PC1": coords[sample_idx, 0],
+            "PC2": coords[sample_idx, 1],
+            "cluster": df["cluster"].values[sample_idx],
+            "whale_tier": df["whale_tier"].values[sample_idx],
+            "ltv30": df["ltv30"].values[sample_idx],
+        })
+        # Map cluster IDs to labels
+        cl_map = dict(zip(cluster_df["cluster"], cluster_df["cluster_label"]))
+        pca_df["cluster_label"] = pca_df["cluster"].map(cl_map)
+        pca_explained = pca.explained_variance_ratio_
 
     # D1 early detection: can we predict whale tier from limited signals?
     early_signals = [c for c in ["games_d7", "active_days_d7", "first_charge_day_offset_d7",
@@ -106,12 +150,26 @@ def compute_whale_metrics(csv_path: str, file_mtime: float):
         early_df.columns = ["Feature", "Non-Whale", "Whale"]
         early_df["Whale/Non-Whale Ratio"] = (early_df["Whale"] / early_df["Non-Whale"].replace(0, np.nan)).round(2)
 
+    # Revenue-at-Risk: if top N whales churned, how much revenue is lost?
+    rev_at_risk = []
+    sorted_ltv = df["ltv30"].sort_values(ascending=False).values
+    for n_lost in [1, 5, 10, 50]:
+        lost_rev = sorted_ltv[:min(n_lost, len(sorted_ltv))].sum()
+        pct = lost_rev / total_rev * 100 if total_rev > 0 else 0
+        rev_at_risk.append({"Whales Lost": n_lost, "Revenue Lost": lost_rev,
+                            "% of Total Revenue": round(pct, 1)})
+    rev_at_risk_df = pd.DataFrame(rev_at_risk)
+
     return df, {
         "conc_df": conc_df,
         "tier_stats": tier_stats,
         "cluster_df": cluster_df,
+        "pca_df": pca_df,
+        "pca_explained": pca_explained if cluster_df is not None else None,
         "early_df": early_df,
+        "rev_at_risk_df": rev_at_risk_df,
         "feat_cols": feat_cols,
+        "cluster_features": cluster_features if cluster_df is not None else [],
         "p99": p99, "p95": p95, "p80": p80,
         "total_rev": total_rev,
         "tier_order": tier_order,
@@ -139,7 +197,11 @@ if error:
 conc_df = metrics["conc_df"]
 tier_stats = metrics["tier_stats"]
 cluster_df = metrics["cluster_df"]
+pca_df = metrics["pca_df"]
+pca_explained = metrics["pca_explained"]
 early_df = metrics["early_df"]
+rev_at_risk_df = metrics["rev_at_risk_df"]
+cluster_features = metrics["cluster_features"]
 p99, p95, p80 = metrics["p99"], metrics["p95"], metrics["p80"]
 total_rev = metrics["total_rev"]
 tier_order = metrics["tier_order"]
@@ -151,6 +213,18 @@ render_report_md(REPORTS_DIR / "Whale_Segmentation.md", "📄 Full Whale Segment
 # ── KPIs ───────────────────────────────────────────────────────────
 st.markdown("---")
 st.header("📊 Revenue Concentration")
+st.info(
+    """💡 **What is Revenue Concentration?**
+
+In most F2P games, a tiny fraction of users generate the vast majority of revenue.
+This is the **whale economy** — understanding *how concentrated* your revenue is tells you
+how much business risk is tied to a small number of players.
+
+- **Healthy range:** Top 5% contributes 40–60% of revenue — diverse enough to be resilient.
+- **High concentration (>70%):** Revenue depends heavily on whales — losing even a few can be catastrophic.
+- **Use this data** to decide how aggressively to invest in whale retention vs. broadening the payer base.""",
+    icon="📊"
+)
 
 top1_share = conc_df[conc_df["Top %"] == "Top 1%"]["Revenue Share %"].iloc[0]
 top5_share = conc_df[conc_df["Top %"] == "Top 5%"]["Revenue Share %"].iloc[0]
@@ -200,9 +274,58 @@ with col2:
     fig_pie.update_layout(height=380, showlegend=False)
     st.plotly_chart(fig_pie, use_container_width=True)
 
-# ── Tier Behavioral Profile ─────────────────────────────────────────
+# ── Revenue at Risk ───────────────────────────────────────────
+st.markdown("---")
+st.header("⚠️ Revenue at Risk")
+st.markdown(
+    "If your top whales churned tomorrow, how much revenue would you lose? "
+    "This stress-test helps size the **retention investment** needed to protect your revenue base."
+)
+
+col_rar1, col_rar2 = st.columns(2)
+with col_rar1:
+    fig_rar = go.Figure()
+    fig_rar.add_trace(go.Bar(
+        x=rev_at_risk_df["Whales Lost"].astype(str) + " whales",
+        y=rev_at_risk_df["% of Total Revenue"],
+        marker_color=["#c0392b", "#e74c3c", "#e67e22", "#f1c40f"],
+        text=rev_at_risk_df["% of Total Revenue"].apply(lambda v: f"{v:.1f}%"),
+        textposition="outside",
+    ))
+    fig_rar.update_layout(
+        title="Revenue Lost if Top-N Whales Churn",
+        yaxis_title="% of Total Revenue", height=380,
+        yaxis=dict(range=[0, rev_at_risk_df["% of Total Revenue"].max() * 1.3]),
+    )
+    st.plotly_chart(fig_rar, use_container_width=True)
+
+with col_rar2:
+    tbl_rar = rev_at_risk_df.copy()
+    tbl_rar["Revenue Lost"] = tbl_rar["Revenue Lost"].apply(
+        lambda v: format_currency(convert_vnd(v, cur["code"]), cur["code"]))
+    st.dataframe(tbl_rar, use_container_width=True, hide_index=True)
+    st.markdown(
+        "> **Rule of thumb:** If losing 10 whales would cost >5% of revenue, "
+        "you need a dedicated **VIP retention program** with 1:1 account management. "
+        "If losing 50 whales costs >20%, consider diversifying your monetization strategy."
+    )
+
+# ── Tier Behavioral Profile ───────────────────────────────────────
 st.markdown("---")
 st.header("🎮 Behavioral Profile by Tier")
+st.info(
+    """💡 **How to read this radar chart:**
+
+Each axis represents a D7 behavioral metric, **normalized to 0–1** so all features are comparable.
+A tier whose polygon covers more area has **higher engagement across all dimensions**.
+
+- **Mega-Whales** typically dominate every axis — they play more, log in more, and progress further.
+- **The gap between Mega-Whale and Whale** shows whether top spenders are also top players, or just big purchasers.
+- **If Minnows have high engagement but low spend**, they are your best candidates for monetization nudges.
+
+**Actions:** Look for tiers with high `games` and `active_days` but low `rev` — these users are engaged but under-monetized.""",
+    icon="🎮"
+)
 
 feat_display = [c for c in ["games_d7_mean", "active_days_d7_mean", "win_rate_d7_mean",
                               "kd_d7_mean", "max_level_seen_d7_mean", "login_rows_d7_mean",
@@ -255,69 +378,203 @@ st.dataframe(tbl, use_container_width=True, hide_index=True)
 if cluster_df is not None:
     st.markdown("---")
     st.header("🔵 Behavioral Clusters (K-Means, k=4)")
-    st.caption("Clusters based purely on engagement signals — no payment features used.")
+    st.info(
+        """💡 **What are Behavioral Clusters?**
 
-    fig_cluster = go.Figure()
-    cluster_colors = ["#e74c3c", "#3498db", "#2ecc71", "#f39c12"]
-    for i, row in cluster_df.iterrows():
-        fig_cluster.add_trace(go.Bar(
-            x=[row["cluster_label"]],
-            y=[row["avg_ltv30"]],
-            name=row["cluster_label"],
-            marker_color=cluster_colors[i % len(cluster_colors)],
-            text=[format_currency(convert_vnd(row["avg_ltv30"], cur["code"]), cur["code"])],
-            textposition="outside",
-        ))
-    fig_cluster.update_layout(
-        title=f"Avg LTV30 by Engagement Cluster ({cur['symbol']})",
-        yaxis_title=f"Avg LTV30 ({cur['symbol']})", height=380,
-        showlegend=False,
+We group users into 4 clusters based **purely on how they play** — games played, active days,
+win rate, K/D ratio, level progression, and login frequency. **No revenue data is used.**
+
+The goal: **Can we predict who will spend based only on how they engage?**
+
+- If a cluster has high engagement AND high LTV30 → these are your **natural whales** — skilled, committed players who also spend.
+- If a cluster has high engagement but LOW LTV30 → these are **under-monetized enthusiasts** — prime targets for first-purchase offers.
+- If a cluster has low engagement but high LTV30 → these are **impulse spenders** — they pay but don't stick around. Retention risk.
+
+**The scatter plot below** projects all users onto 2 dimensions (via PCA) so you can visually see how distinct the clusters are.
+Well-separated clusters = the algorithm found real behavioral patterns. Overlapping clusters = user behaviors are more homogeneous.""",
+        icon="🔵"
     )
-    st.plotly_chart(fig_cluster, use_container_width=True)
 
-    cluster_tbl = cluster_df[["cluster_label", "users", "avg_ltv30", "payer_rate"]].copy()
+    # PCA scatter visualization
+    if pca_df is not None:
+        col_pca1, col_pca2 = st.columns(2)
+        cluster_colors = ["#e74c3c", "#3498db", "#2ecc71", "#f39c12"]
+
+        with col_pca1:
+            fig_pca = px.scatter(
+                pca_df, x="PC1", y="PC2", color="cluster_label",
+                color_discrete_sequence=cluster_colors,
+                opacity=0.5,
+                title=f"User Clusters in 2D (PCA — {sum(pca_explained)*100:.0f}% variance explained)",
+                labels={"PC1": f"PC1 ({pca_explained[0]*100:.0f}%)",
+                        "PC2": f"PC2 ({pca_explained[1]*100:.0f}%)"},
+                height=420,
+            )
+            fig_pca.update_traces(marker=dict(size=3))
+            fig_pca.update_layout(legend=dict(orientation="h", y=-0.2))
+            st.plotly_chart(fig_pca, use_container_width=True)
+
+        with col_pca2:
+            fig_cluster = go.Figure()
+            for i, row in cluster_df.iterrows():
+                fig_cluster.add_trace(go.Bar(
+                    x=[row["cluster_label"]],
+                    y=[convert_vnd(row["avg_ltv30"], cur["code"])],
+                    name=row["cluster_label"],
+                    marker_color=cluster_colors[i % len(cluster_colors)],
+                    text=[format_currency(convert_vnd(row["avg_ltv30"], cur["code"]), cur["code"])],
+                    textposition="outside",
+                ))
+            fig_cluster.update_layout(
+                title=f"Avg LTV30 by Engagement Cluster ({cur['symbol']})",
+                yaxis_title=f"Avg LTV30 ({cur['symbol']})", height=420,
+                showlegend=False,
+            )
+            st.plotly_chart(fig_cluster, use_container_width=True)
+    else:
+        fig_cluster = go.Figure()
+        cluster_colors = ["#e74c3c", "#3498db", "#2ecc71", "#f39c12"]
+        for i, row in cluster_df.iterrows():
+            fig_cluster.add_trace(go.Bar(
+                x=[row["cluster_label"]],
+                y=[convert_vnd(row["avg_ltv30"], cur["code"])],
+                name=row["cluster_label"],
+                marker_color=cluster_colors[i % len(cluster_colors)],
+                text=[format_currency(convert_vnd(row["avg_ltv30"], cur["code"]), cur["code"])],
+                textposition="outside",
+            ))
+        fig_cluster.update_layout(
+            title=f"Avg LTV30 by Engagement Cluster ({cur['symbol']})",
+            yaxis_title=f"Avg LTV30 ({cur['symbol']})", height=380,
+            showlegend=False,
+        )
+        st.plotly_chart(fig_cluster, use_container_width=True)
+
+    # Enhanced cluster table
+    tbl_cols_cl = ["cluster_label", "users", "avg_ltv30", "payer_rate", "whale_rate", "rev_share_%"]
+    cluster_tbl = cluster_df[[c for c in tbl_cols_cl if c in cluster_df.columns]].copy()
     cluster_tbl["avg_ltv30"] = cluster_tbl["avg_ltv30"].apply(
         lambda v: format_currency(convert_vnd(v, cur["code"]), cur["code"]))
     cluster_tbl["payer_rate"] = (cluster_tbl["payer_rate"] * 100).round(1).astype(str) + "%"
-    cluster_tbl.columns = ["Cluster", "Users", f"Avg LTV30 ({cur['symbol']})", "Payer Rate"]
+    if "whale_rate" in cluster_tbl.columns:
+        cluster_tbl["whale_rate"] = (cluster_tbl["whale_rate"] * 100).round(2).astype(str) + "%"
+    col_names = ["Cluster", "Users", f"Avg LTV30 ({cur['symbol']})", "Payer Rate", "Whale Rate", "Rev Share %"]
+    cluster_tbl.columns = col_names[:len(cluster_tbl.columns)]
     st.dataframe(cluster_tbl, use_container_width=True, hide_index=True)
 
-# ── Early Detection ─────────────────────────────────────────────────
+# ── Early Detection ─────────────────────────────────────────
 if early_df is not None:
     st.markdown("---")
     st.header("⚡ Early Whale Detection Signals")
-    st.caption("Average D7 feature values: Whale (top 5% LTV30) vs Non-Whale")
+    st.info(
+        """💡 **Can we identify whales before they spend?**
 
-    fig_early = go.Figure()
-    fig_early.add_trace(go.Bar(
-        name="Non-Whale", x=early_df["Feature"],
-        y=early_df["Non-Whale"], marker_color="#95a5a6",
-    ))
-    fig_early.add_trace(go.Bar(
-        name="Whale (top 5%)", x=early_df["Feature"],
-        y=early_df["Whale"], marker_color="#e74c3c",
-    ))
-    fig_early.update_layout(
-        title="Whale vs Non-Whale: Average Feature Values",
-        barmode="group", height=400,
-        legend=dict(orientation="h", y=-0.2),
+This chart compares the **average D7 behavior** of users who became whales (top 5% LTV30) vs. everyone else.
+The **Ratio column** is the key metric — it shows how many times higher the whale average is.
+
+- **Ratio > 2×:** Strong early signal — whales are dramatically different on this metric.
+- **Ratio ~ 1×:** Not useful for early detection — whales look similar to non-whales.
+- **`first_charge_day_offset` near 0:** Whales tend to pay on Day 0 — they arrive with purchase intent.
+- **`games_d7` and `active_days_d7` > 2×:** Whales are also power players, not just big spenders.
+
+**Action:** Build a D1 whale scoring rule: if `games_d7 > X` AND `first_charge_day = 0`, flag for VIP treatment.""",
+        icon="⚡"
     )
-    st.plotly_chart(fig_early, use_container_width=True)
+
+    col_early1, col_early2 = st.columns(2)
+    with col_early1:
+        fig_early = go.Figure()
+        fig_early.add_trace(go.Bar(
+            name="Non-Whale", x=early_df["Feature"],
+            y=early_df["Non-Whale"], marker_color="#95a5a6",
+        ))
+        fig_early.add_trace(go.Bar(
+            name="Whale (top 5%)", x=early_df["Feature"],
+            y=early_df["Whale"], marker_color="#e74c3c",
+        ))
+        fig_early.update_layout(
+            title="Whale vs Non-Whale: Average Feature Values",
+            barmode="group", height=420,
+            legend=dict(orientation="h", y=-0.2),
+        )
+        st.plotly_chart(fig_early, use_container_width=True)
+
+    with col_early2:
+        # Ratio bar chart — more intuitive for business users
+        ratio_df = early_df.copy()
+        ratio_df = ratio_df.sort_values("Whale/Non-Whale Ratio", ascending=True)
+        fig_ratio = go.Figure()
+        fig_ratio.add_trace(go.Bar(
+            x=ratio_df["Whale/Non-Whale Ratio"],
+            y=ratio_df["Feature"],
+            orientation="h",
+            marker_color=ratio_df["Whale/Non-Whale Ratio"].apply(
+                lambda v: "#e74c3c" if v >= 2 else "#e67e22" if v >= 1.5 else "#95a5a6"),
+            text=ratio_df["Whale/Non-Whale Ratio"].apply(lambda v: f"{v:.1f}×"),
+            textposition="outside",
+        ))
+        fig_ratio.add_vline(x=1.0, line_dash="dash", line_color="gray",
+                            annotation_text="1× (no difference)")
+        fig_ratio.update_layout(
+            title="Whale ÷ Non-Whale Ratio (higher = stronger signal)",
+            xaxis_title="Ratio", height=420,
+        )
+        st.plotly_chart(fig_ratio, use_container_width=True)
 
     st.dataframe(
         early_df.rename(columns={"Whale/Non-Whale Ratio": "Ratio (Whale÷Non-Whale)"}),
         use_container_width=True, hide_index=True,
     )
 
-# ── Insights ───────────────────────────────────────────────────────
+# ── Insights & Playbook ───────────────────────────────────────
 st.markdown("---")
-st.header("💡 Insights")
-st.markdown(f"- **Top 1% of users = {top1_share:.1f}% of revenue** — extreme whale concentration")
-st.markdown(f"- **Whale threshold (top 5%):** {format_currency(convert_vnd(p95, cur['code']), cur['code'])} LTV30")
-st.markdown(f"- **Mega-whale threshold (top 1%):** {format_currency(convert_vnd(p99, cur['code']), cur['code'])} LTV30")
-st.markdown("- Whales play **3× more games** and are active **2× more days** in D7 — detectable early")
-st.markdown("- Same-day charge (`first_charge_day_offset = 0`) is the strongest single whale signal")
-st.markdown("### 🎯 Recommended Actions")
-st.markdown("- Flag predicted whales within **D1** for VIP onboarding treatment")
-st.markdown("- Use whale cluster as primary **UA lookalike seed** (not broad payer seed)")
-st.markdown("- Set up **whale churn alerts** — see Churn Prediction page")
+st.header("💡 Key Findings")
+
+find_col1, find_col2 = st.columns(2)
+with find_col1:
+    st.markdown(f"""
+**Revenue Structure:**
+- Top 1% of users = **{top1_share:.1f}%** of revenue
+- Top 5% of users = **{top5_share:.1f}%** of revenue
+- Whale threshold (top 5%): **{format_currency(convert_vnd(p95, cur['code']), cur['code'])}** LTV30
+- Mega-whale threshold (top 1%): **{format_currency(convert_vnd(p99, cur['code']), cur['code'])}** LTV30
+""")
+with find_col2:
+    st.markdown(f"""
+**Behavioral Signals:**
+- Whales play significantly more games and log in more days in D7
+- Same-day charge (`first_charge_day_offset = 0`) is the strongest whale signal
+- Engagement clusters can predict spending potential before any purchase
+- Payer rate: **{payer_rate:.1f}%** — most users never pay, but those who do are highly valuable
+""")
+
+st.markdown("### 🎯 Whale Management Playbook")
+play_col1, play_col2, play_col3 = st.columns(3)
+with play_col1:
+    st.markdown("""
+**🔍 Identify (D0–D1)**
+- Flag users with D0 purchase + high games count as potential whales
+- Use engagement cluster assignment as a real-time scoring signal
+- Prioritize D0 converters for VIP onboarding flow
+""")
+with play_col2:
+    st.markdown("""
+**💰 Monetize (D1–D7)**
+- For engaged non-payers in whale-like clusters: trigger first-purchase offer
+- For D0 payers: offer bundle/subscription by D3
+- Use whale cluster as **UA lookalike seed** instead of broad payer seed
+""")
+with play_col3:
+    st.markdown("""
+**🛡️ Retain (D7+)**
+- Set up whale churn alerts (see **Churn Prediction** page)
+- Assign top 50 whales to VIP account management
+- Monitor weekly: if a whale\'s active_days drops, trigger retention offer
+""")
+
+st.markdown(
+    "> **Cross-reference this page with:** "
+    "[Time-to-First-Purchase](#) for conversion timing, "
+    "[Channel x Whale Quality](#) for acquisition source, "
+    "[Churn Prediction](#) for retention risk."
+)
