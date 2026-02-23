@@ -65,21 +65,22 @@ ltv_sorted = df["ltv30"].sort_values(ascending=False).values
 total_rev = ltv_sorted.sum()
 
 decile_rows = []
-for i in range(10):
-    start = int(len(ltv_sorted) * i / 10)
-    end = int(len(ltv_sorted) * (i + 1) / 10)
+for pct in [1, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]:
+    end = max(1, int(len(ltv_sorted) * pct / 100))
+    prev_pct = {10: 0, 20: 10, 30: 20, 40: 30, 50: 40, 60: 50, 70: 60, 80: 70, 90: 80, 100: 90}.get(pct, 0)
+    start = int(len(ltv_sorted) * prev_pct / 100)
     decile_rev = ltv_sorted[start:end].sum()
     cum_rev = ltv_sorted[:end].sum()
     decile_rows.append({
-        "Decile": f"Top {(i+1)*10}%",
+        "Decile": f"Top {pct}%",
         "Users": f"{start:,}–{end:,}",
         f"Decile Revenue ({cur['symbol']})": format_currency(decile_rev, cur["code"]),
-        "% of Total": f"{decile_rev/total_rev*100:.1f}%",
+        "% of Total": f"{decile_rev/total_rev*100:.1f}%" if total_rev > 0 else "0%",
         f"Cumulative Revenue ({cur['symbol']})": format_currency(cum_rev, cur["code"]),
-        "Cumulative %": f"{cum_rev/total_rev*100:.1f}%",
+        "Cumulative %": f"{cum_rev/total_rev*100:.1f}%" if total_rev > 0 else "0%",
     })
 decile_df = pd.DataFrame(decile_rows)
-st.dataframe(decile_df, width='stretch', hide_index=True)
+st.dataframe(decile_df, height=(len(decile_rows) + 1) * 35 + 3, use_container_width=True, hide_index=True)
 
 # Gini coefficient
 n = len(ltv_sorted)

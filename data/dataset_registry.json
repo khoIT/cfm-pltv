@@ -94,7 +94,7 @@
     "7_Notebooks": "cfm_train",
     "3d_Cohort_Comparison": "cfm_train",
     "3e_Causal_Inference": "cfm_train",
-    "3f_Seed_Optimization": "cfm_train",
+    "3f_Seed_Optimization": "cfm_pltv_2025_12_16_train",
     "3g_Real_Time_Scoring": "cfm_pltv_train",
     "6_Summary": "cfm_train",
     "3h_Whale_Segmentation": "cfm_demo",

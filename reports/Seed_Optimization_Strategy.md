@@ -27,10 +27,12 @@ FROM cfm_pltv_features
 ```
 
 ## Analytical Steps
-1. Define 4 seed strategies: D7 Payers, Enriched (D7 + predicted late), Top 10% rev_d7, Oracle (D30 payers)
+1. Define seed strategies: D7 Payers, Engagement-Enriched, ML pLTV-Enriched (1%/5%/10%), Oracle (D30 payers)
 2. Compare: seed size, avg LTV30, payer rate, whale capture, total revenue
 3. Analyze size-quality tradeoff — larger seeds dilute quality but improve network learning
 4. Compute revenue composition of enriched seed to quantify late payer contribution
+5. ML pLTV strategy: use trained XGBoost model to predict LTV for D7 non-payers, include top k% by predicted value
+6. Time-window analysis: run strategies by install week to check stability over time
 
 ## Key Charts
 
@@ -71,12 +73,33 @@ FROM cfm_pltv_features
 - Oracle: ₫41,223,864,000 total revenue
 - Gap: ₫12,269,559,000 revenue missed by D7-only approach
 
+## ML pLTV-Based Seed Strategy (New)
+
+In addition to engagement-based enrichment, the Streamlit app now supports **ML pLTV-enriched seeds**:
+
+1. Load a trained XGBoost pLTV model on the Features & Model page
+2. The model predicts LTV30 for all D7 non-payers (rev_d7 = 0)
+3. Top 1%, 5%, or 10% of D7 non-payers by predicted LTV are added to the seed
+4. This **directly targets high-value future payers** rather than using engagement as a proxy
+
+**Why ML pLTV > Engagement Proxy:**
+- Engagement score is a hand-crafted proxy (games + active days + logins)
+- The pLTV model uses all available features and their interactions
+- The model captures non-linear patterns (e.g., high level + few games = whale signal)
+
+## Quality vs Reach Tradeoff
+
+**D7 Payers Only** has the highest Avg LTV30 but that doesn't make it the best seed:
+- Smallest seed → ad network gets fewer signals to learn from
+- Misses ~30% of whales who pay after D7
+- A slightly lower-quality but larger, more whale-representative seed produces better lookalikes in practice
+
 ## Business Impact & Next Actions
 
-1. **Implement Enriched Seeds:** Add top 5% of predicted late payers to seed lists
-2. **A/B Test:** Compare D7-only vs enriched seeds on the same ad network
+1. **Deploy pLTV-Enriched Seeds:** Use trained XGBoost model to score D7 non-payers, add top 5% to seeds
+2. **A/B Test:** Compare D7-only vs pLTV-enriched vs engagement-enriched on the same ad network
    - Measure: CPI, install volume, D30 payer rate, ROAS
 3. **Network-Specific Optimization:** Each network may respond differently to seed composition
-4. **Seed Refresh Cadence:** Update seeds weekly as new cohorts mature
-5. **ML Integration:** Replace engagement proxy with actual XGBoost model scores for better late payer detection
+4. **Seed Refresh Cadence:** Update seeds weekly as new cohorts mature; re-score with latest model
+5. **Monitor by Install Week:** Strategy effectiveness may shift over time as user quality evolves
 6. **Minimum Seed Size:** Ensure seeds meet network minimums (typically 1,000-5,000 users)
