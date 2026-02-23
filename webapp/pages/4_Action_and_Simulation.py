@@ -12,11 +12,12 @@ import plotly.graph_objects as go
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import os
 from shared import (
     render_sidebar, render_top_menu, render_report_md, get_data, format_currency, convert_vnd,
     get_currency_info, REPORTS_DIR,
     BASELINE_HEURISTICS, compute_baseline_ranking,
-    list_datasets_by_role,
+    list_datasets_by_role, load_csv_cached,
 )
 
 
@@ -62,7 +63,9 @@ if _role_info is not None:
         f"**{_role_info['name']}** — {_role_info['size_mb']:.1f} MB"
         + (f" | {_role_info['split_info']}" if _role_info.get('split_info') else "")
     )
-    df_sim = pd.read_csv(_role_info["path"], low_memory=False)
+    _path = _role_info["path"]
+    _mtime = os.path.getmtime(_path) if os.path.exists(_path) else 0.0
+    df_sim = load_csv_cached(_path, _mtime)
 else:
     st.warning("Dataset not found — falling back to registry default.")
     df_sim = get_data()

@@ -14,11 +14,12 @@ from scipy.stats import spearmanr
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import os
 from shared import (
     render_sidebar, render_top_menu, render_report_md, get_data, get_active_model, convert_vnd, get_currency_info,
     format_currency, REPORTS_DIR, DATA_DIR,
     BASELINE_HEURISTICS, compute_baseline_ranking,
-    list_datasets_by_role,
+    list_datasets_by_role, load_csv_cached,
 )
 
 render_top_menu()
@@ -126,7 +127,9 @@ if _role_info is not None:
         f"**{_role_info['name']}** — {_role_info['size_mb']:.1f} MB"
         + (f" | {_role_info['split_info']}" if _role_info.get('split_info') else "")
     )
-    df_eval = pd.read_csv(_role_info["path"], low_memory=False)
+    _path = _role_info["path"]
+    _mtime = os.path.getmtime(_path) if os.path.exists(_path) else 0.0
+    df_eval = load_csv_cached(_path, _mtime)
 else:
     st.warning("Dataset not found — falling back to registry default.")
     df_eval = get_data()

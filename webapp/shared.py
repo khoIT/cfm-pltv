@@ -319,6 +319,17 @@ def get_data() -> pd.DataFrame:
     return df
 
 
+@st.cache_data(show_spinner="Loading dataset…")
+def load_csv_cached(path: str, mtime: float) -> pd.DataFrame:
+    """
+    Load a CSV file with caching keyed by (path, mtime).
+    Switching to a different dataset always triggers a fresh load + full recalculation.
+    Switching back to a previously-loaded dataset is instant (served from cache).
+    mtime is used purely as a cache-busting key — pass os.path.getmtime(path).
+    """
+    return pd.read_csv(path, low_memory=False)
+
+
 def get_registry_path() -> tuple:
     """Return (csv_path_str, file_mtime) for the currently selected registry dataset.
     Used by pages that pass path+mtime to cached compute functions."""
