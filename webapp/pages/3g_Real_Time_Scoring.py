@@ -14,8 +14,8 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shared import (
-    render_sidebar, render_top_menu, render_report_md, convert_vnd, get_currency_info,
-    format_currency, DATA_DIR, REPORTS_DIR,
+    render_sidebar, render_top_menu, render_report_md, get_registry_path,
+    convert_vnd, get_currency_info, format_currency, REPORTS_DIR,
 )
 
 render_top_menu()
@@ -142,22 +142,7 @@ def compute_realtime_metrics(csv_path: str, file_mtime: float):
     }, None
 
 
-def list_available_datasets():
-    """List D135 part files first, then other cfm_pltv datasets."""
-    datasets = {}
-    # Prioritise D135 parts
-    for f in sorted(DATA_DIR.glob("cfm_pltv_D135_part*.csv")):
-        size_mb = f.stat().st_size / 1e6
-        datasets[f.stem] = {"path": str(f), "size_mb": size_mb, "mtime": f.stat().st_mtime}
-    # Then other datasets
-    for f in DATA_DIR.glob("cfm_pltv*.csv"):
-        if f.stem not in datasets:
-            size_mb = f.stat().st_size / 1e6
-            datasets[f.stem] = {"path": str(f), "size_mb": size_mb, "mtime": f.stat().st_mtime}
-    return datasets
-
-
-# ── page ───────────────────────────────────────────────────────────
+# ── page ─────────────────────────────────────────────────────────────────
 st.title("⚡ Real-Time Scoring")
 st.markdown(
     "Evaluate **D1 / D3 / D5 / D7** prediction windows using **actual behavioural data** "
@@ -172,29 +157,11 @@ st.success(
 
 cur = get_currency_info()
 
-# ── Dataset selector ───────────────────────────────────────────────
-st.header("📂 Select Dataset Part")
-datasets = list_available_datasets()
-if not datasets:
-    st.error("No datasets found in data/ directory.")
-    st.stop()
-
-ds_names = list(datasets.keys())
-# Default to part01
-default_idx = next((i for i, n in enumerate(ds_names) if "D135_part01" in n), 0)
-col_ds1, col_ds2 = st.columns([2, 3])
-with col_ds1:
-    chosen_ds = st.selectbox(
-        "Dataset part", ds_names, index=default_idx, key="realtime_dataset",
-        help="Each part contains ~1M rows across D1/D3/D5/D7 windows (~250k unique users)"
-    )
-with col_ds2:
-    ds_info = datasets[chosen_ds]
-    st.markdown(f"**{chosen_ds}** — {ds_info['size_mb']:.0f} MB")
-    st.caption("Contains actual D1/D3/D5/D7 feature windows per user")
+# Load from registry
+ds_path, ds_mtime = get_registry_path()
 
 with st.spinner("Training GBM models on actual D1/D3/D5/D7 windows… (~20–40s, cached after first run)"):
-    df_raw, metrics, error = compute_realtime_metrics(ds_info["path"], ds_info["mtime"])
+    df_raw, metrics, error = compute_realtime_metrics(ds_path, ds_mtime)
 
 if error:
     st.error(f"❌ {error}")

@@ -15,7 +15,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shared import (
-    render_sidebar, render_top_menu, get_data, load_test_1, load_test_2, convert_vnd,
+    render_sidebar, render_top_menu, get_data, convert_vnd,
     get_currency_info, format_currency, REPORTS_DIR,
     BASELINE_HEURISTICS, compute_baseline_ranking,
     ALL_NUMERIC_FEATURES, ALL_CAT_FEATURES,
@@ -28,35 +28,45 @@ st.title("🔬 Diagnostics")
 st.markdown("---")
 
 if st.session_state.get("data_missing", False):
-    st.warning("⚠️ No training data found")
-    st.info("Please upload your dataset using the **📤 Data Upload** page in the sidebar.")
+    st.warning("⚠️ No dataset selected")
+    st.info("Please select a dataset from the **Dataset Registry** in the sidebar.")
     st.stop()
 
 cur = get_currency_info()
 
 # =====================================================================
-# Load both test sets
+# Load dataset from registry and split by date for temporal comparison
 # =====================================================================
-st.header("📊 Side-by-Side: Test 1 vs Test 2")
+st.header("📊 Side-by-Side: Early vs Late Cohorts")
 st.markdown(
-    "Comparing model performance across two **non-overlapping OOT periods** reveals "
+    "Comparing model performance across two **temporal halves** of the dataset reveals "
     "whether the model generalizes or degrades over time."
 )
 
-try:
-    df_t1 = load_test_1()
-    df_t2 = load_test_2()
-except FileNotFoundError as e:
-    st.error(str(e))
+df_full = get_data()
+if "install_date" not in df_full.columns:
+    st.error("Dataset must contain 'install_date' column for temporal diagnostics.")
     st.stop()
+
+df_full["install_date"] = pd.to_datetime(df_full["install_date"], errors="coerce")
+median_date = df_full["install_date"].median()
+df_t1 = df_full[df_full["install_date"] <= median_date].copy()
+df_t2 = df_full[df_full["install_date"] > median_date].copy()
+
+if len(df_t1) == 0 or len(df_t2) == 0:
+    st.error("Dataset too small to split into two temporal halves.")
+    st.stop()
+
+t1_min, t1_max = df_t1["install_date"].min().date(), df_t1["install_date"].max().date()
+t2_min, t2_max = df_t2["install_date"].min().date(), df_t2["install_date"].max().date()
 
 col_info1, col_info2 = st.columns(2)
 with col_info1:
-    st.metric("Test 1 — OOT Near", f"{len(df_t1):,} rows")
-    st.caption("📅 2026-01-09 to 2026-01-13")
+    st.metric("Early Cohort", f"{len(df_t1):,} rows")
+    st.caption(f"📅 {t1_min} to {t1_max}")
 with col_info2:
-    st.metric("Test 2 — OOT Far", f"{len(df_t2):,} rows")
-    st.caption("📅 2026-01-14 to 2026-01-18")
+    st.metric("Late Cohort", f"{len(df_t2):,} rows")
+    st.caption(f"📅 {t2_min} to {t2_max}")
 
 # =====================================================================
 # Helper: compute lift curve
@@ -107,8 +117,8 @@ if use_live:
     pred_t1 = np.expm1(model.predict(X_t1))
     pred_t2 = np.expm1(model.predict(X_t2))
 
-    strategies[f"{model_label} — Test 1"] = {"y_true": df_t1["ltv30"].values, "y_pred": pred_t1, "color": "royalblue", "dash": "solid"}
-    strategies[f"{model_label} — Test 2"] = {"y_true": df_t2["ltv30"].values, "y_pred": pred_t2, "color": "royalblue", "dash": "dash"}
+    strategies[f"{model_label} — Early"] = {"y_true": df_t1["ltv30"].values, "y_pred": pred_t1, "color": "royalblue", "dash": "solid"}
+    strategies[f"{model_label} — Late"] = {"y_true": df_t2["ltv30"].values, "y_pred": pred_t2, "color": "royalblue", "dash": "dash"}
 else:
     st.info("⬅️ Train a model on the **Features & Model** page to see XGBoost lift curves.  \n"
             "Baseline heuristics are shown below.")
@@ -117,12 +127,12 @@ else:
 for bl_name, bl_info in BASELINE_HEURISTICS.items():
     col = bl_info["column"]
     if col in df_t1.columns and col in df_t2.columns:
-        strategies[f"{bl_name} — Test 1"] = {
+        strategies[f"{bl_name} — Early"] = {
             "y_true": df_t1["ltv30"].values,
             "y_pred": compute_baseline_ranking(df_t1, col),
             "color": bl_info["color"], "dash": "solid",
         }
-        strategies[f"{bl_name} — Test 2"] = {
+        strategies[f"{bl_name} — Late"] = {
             "y_true": df_t2["ltv30"].values,
             "y_pred": compute_baseline_ranking(df_t2, col),
             "color": bl_info["color"], "dash": "dash",
@@ -145,13 +155,13 @@ fig_lift.update_layout(
     xaxis_title="% Users (ranked by strategy)",
     yaxis_title="% Cumulative Revenue Captured",
     height=500, legend=dict(orientation="h", y=-0.2),
-    title="Lift Curve Comparison: Test 1 (solid) vs Test 2 (dashed)",
+    title="Lift Curve Comparison: Early (solid) vs Late (dashed)",
 )
 st.plotly_chart(fig_lift, width='stretch')
 
 st.markdown(
-    "> **Solid lines** = Test 1 (Jan 9–13, nearer to training).  \n"
-    "> **Dashed lines** = Test 2 (Jan 14–18, further from training).  \n"
+    "> **Solid lines** = Early cohort (nearer to start).  \n"
+    "> **Dashed lines** = Late cohort (further from start).  \n"
     "> If dashed lines are significantly lower, the model may be **degrading over time**."
 )
 
@@ -159,7 +169,7 @@ st.markdown(
 # Metrics Comparison Table
 # =====================================================================
 st.markdown("---")
-st.header("📋 Metrics Comparison: Test 1 vs Test 2")
+st.header("📋 Metrics Comparison: Early vs Late Cohort")
 
 metric_rows = []
 
@@ -179,13 +189,13 @@ def compute_metrics_for(y_true, y_pred, label):
 
 
 if use_live:
-    metric_rows.append(compute_metrics_for(df_t1["ltv30"].values, pred_t1, f"{model_label} — Test 1"))
-    metric_rows.append(compute_metrics_for(df_t2["ltv30"].values, pred_t2, f"{model_label} — Test 2"))
+    metric_rows.append(compute_metrics_for(df_t1["ltv30"].values, pred_t1, f"{model_label} — Early"))
+    metric_rows.append(compute_metrics_for(df_t2["ltv30"].values, pred_t2, f"{model_label} — Late"))
 
 # Add one baseline for comparison
 if "rev_d7" in df_t1.columns:
-    metric_rows.append(compute_metrics_for(df_t1["ltv30"].values, df_t1["rev_d7"].fillna(0).values, "rev_d7 — Test 1"))
-    metric_rows.append(compute_metrics_for(df_t2["ltv30"].values, df_t2["rev_d7"].fillna(0).values, "rev_d7 — Test 2"))
+    metric_rows.append(compute_metrics_for(df_t1["ltv30"].values, df_t1["rev_d7"].fillna(0).values, "rev_d7 — Early"))
+    metric_rows.append(compute_metrics_for(df_t2["ltv30"].values, df_t2["rev_d7"].fillna(0).values, "rev_d7 — Late"))
 
 if metric_rows:
     st.dataframe(pd.DataFrame(metric_rows), width='stretch', hide_index=True)
@@ -207,19 +217,24 @@ if metric_rows:
 # Revenue Distribution Comparison
 # =====================================================================
 st.markdown("---")
-st.header("💰 Revenue Distribution: Test 1 vs Test 2")
+st.header("💰 Revenue Distribution: Early vs Late Cohort")
 st.markdown("> If the revenue distribution shifts significantly between periods, model accuracy may vary.")
+
+# Ensure is_payer_30 exists
+if "is_payer_30" not in df_t1.columns:
+    df_t1["is_payer_30"] = (df_t1["ltv30"] > 0).astype(int)
+    df_t2["is_payer_30"] = (df_t2["ltv30"] > 0).astype(int)
 
 col1, col2 = st.columns(2)
 with col1:
-    st.subheader("Test 1")
+    st.subheader("Early Cohort")
     st.metric("Mean LTV30", format_currency(df_t1["ltv30"].mean(), cur["code"]))
     st.metric("Median LTV30", format_currency(df_t1["ltv30"].median(), cur["code"]))
     st.metric("Payer Rate", f"{df_t1['is_payer_30'].mean() * 100:.1f}%")
     st.metric("Total Revenue", format_currency(df_t1["ltv30"].sum(), cur["code"]))
 
 with col2:
-    st.subheader("Test 2")
+    st.subheader("Late Cohort")
     st.metric("Mean LTV30", format_currency(df_t2["ltv30"].mean(), cur["code"]))
     st.metric("Median LTV30", format_currency(df_t2["ltv30"].median(), cur["code"]))
     st.metric("Payer Rate", f"{df_t2['is_payer_30'].mean() * 100:.1f}%")
@@ -230,14 +245,14 @@ t1_payers = df_t1[df_t1["ltv30"] > 0].copy()
 t2_payers = df_t2[df_t2["ltv30"] > 0].copy()
 t1_payers["ltv30_display"] = convert_vnd(t1_payers["ltv30"], cur["code"])
 t2_payers["ltv30_display"] = convert_vnd(t2_payers["ltv30"], cur["code"])
-t1_payers["Period"] = "Test 1 (Jan 9–13)"
-t2_payers["Period"] = "Test 2 (Jan 14–18)"
+t1_payers["Period"] = f"Early ({t1_min} to {t1_max})"
+t2_payers["Period"] = f"Late ({t2_min} to {t2_max})"
 combined = pd.concat([t1_payers[["ltv30_display", "Period"]], t2_payers[["ltv30_display", "Period"]]])
 
 fig_hist = px.histogram(
     combined, x="ltv30_display", color="Period",
     nbins=50, barmode="overlay", opacity=0.6,
-    title="LTV30 Distribution (Payers Only) — Test 1 vs Test 2",
+    title="LTV30 Distribution (Payers Only) — Early vs Late Cohort",
     labels={"ltv30_display": f"LTV30 ({cur['symbol']})", "count": "Users"},
     log_y=True,
     height=420,
@@ -249,7 +264,7 @@ ms_t1 = df_t1.groupby("media_source").agg(
     avg_ltv=("ltv30", "mean"),
     payer_rate=("is_payer_30", "mean"),
 ).reset_index()
-ms_t1["period"] = "Test 1"
+ms_t1["period"] = "Early"
 ms_t1["avg_ltv_display"] = convert_vnd(ms_t1["avg_ltv"], cur["code"])
 
 ms_t2 = df_t2.groupby("media_source").agg(
@@ -257,14 +272,14 @@ ms_t2 = df_t2.groupby("media_source").agg(
     avg_ltv=("ltv30", "mean"),
     payer_rate=("is_payer_30", "mean"),
 ).reset_index()
-ms_t2["period"] = "Test 2"
+ms_t2["period"] = "Late"
 ms_t2["avg_ltv_display"] = convert_vnd(ms_t2["avg_ltv"], cur["code"])
 
 ms_combined = pd.concat([ms_t1, ms_t2])
 fig_ms = px.bar(
     ms_combined, x="media_source", y="avg_ltv_display", color="period",
     barmode="group",
-    title=f"Avg LTV30 by Media Source: Test 1 vs Test 2",
+    title=f"Avg LTV30 by Media Source: Early vs Late Cohort",
     labels={"avg_ltv_display": f"Avg LTV30 ({cur['symbol']})", "media_source": "Media Source"},
     height=420,
 )
@@ -286,7 +301,7 @@ st.markdown(
     "High concentration = higher variance in model-based seed performance."
 )
 
-for label, df_test in [("Test 1", df_t1), ("Test 2", df_t2)]:
+for label, df_test in [("Early Cohort", df_t1), ("Late Cohort", df_t2)]:
     ltv = df_test["ltv30"].values
     total = ltv.sum()
     sorted_ltv = np.sort(ltv)[::-1]
@@ -314,9 +329,9 @@ for label, df_test in [("Test 1", df_t1), ("Test 2", df_t2)]:
 st.markdown("---")
 st.markdown("### 💡 Diagnostic Summary")
 st.markdown(
-    "**If lift curves are similar across Test 1 and Test 2:**  \n"
+    "**If lift curves are similar across Early and Late cohorts:**  \n"
     "→ Model generalizes well. Safe to deploy for seed selection.  \n\n"
-    "**If Test 2 curves are significantly lower:**  \n"
+    "**If Late cohort curves are significantly lower:**  \n"
     "→ Model may be overfitting to recent training patterns. Consider:  \n"
     "- Adding more training data  \n"
     "- Retraining more frequently  \n"

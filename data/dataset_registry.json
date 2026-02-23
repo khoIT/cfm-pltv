@@ -49,16 +49,36 @@
       "split_info": "1,655,607 rows (100%)",
       "created_at": "2026-02-23T10:34:50.561352",
       "size_mb": 336.8
+    },
+    "cfm_demo": {
+      "name": "cfm_demo",
+      "filename": "cfm_demo.csv",
+      "rows": 499999,
+      "columns": 37,
+      "source_file": "cfm_demo.csv",
+      "split_info": "499,999 rows (100%)",
+      "created_at": "2026-02-23T10:36:44.366622",
+      "size_mb": 100.6
+    },
+    "cfm_eval": {
+      "name": "cfm_eval",
+      "filename": "cfm_eval.csv",
+      "rows": 449729,
+      "columns": 37,
+      "source_file": "cfm_eval.csv",
+      "split_info": "449,729 rows (100%)",
+      "created_at": "2026-02-23T11:04:57.217226",
+      "size_mb": 86.8
     }
   },
   "page_bindings": {
-    "1_Decision_Definition": "cfm_pltv_dec_16_feb_18_train",
+    "1_Decision_Definition": "cfm_train",
     "3c_Temporal_Analysis": "cfm_pltv_train",
-    "0_Data_Upload": "cfm_pltv_train",
-    "2_Features_and_Model": "cfm_pltv_train",
-    "3_Evaluation_and_Insights": "cfm_pltv_test1",
-    "3b_Late_Payer_Analysis": "cfm_pltv_test1",
-    "4_Action_and_Simulation": "cfm_pltv_train",
+    "0_Data_Upload": "cfm_train",
+    "2_Features_and_Model": "cfm_train",
+    "3_Evaluation_and_Insights": "cfm_train",
+    "3b_Late_Payer_Analysis": "cfm_train",
+    "4_Action_and_Simulation": "cfm_demo",
     "5_Feedback_and_Learning": "cfm_pltv_train",
     "6_Diagnostics": "cfm_pltv_train",
     "7_Notebooks": "cfm_pltv_train",

@@ -106,24 +106,6 @@ BASELINE_HEURISTICS = {
 }
 
 
-# ---------------------------------------------------------------------------
-# Test dataset definitions
-# ---------------------------------------------------------------------------
-TEST_DATASETS = {
-    "Test 1 — OOT Near (Jan 9–13)": {
-        "file": "cfm_pltv_test1.csv",
-        "rows": "118k",
-        "dates": "2026-01-09 to 2026-01-13",
-        "description": "Closer to training window — easier generalization test.",
-    },
-    "Test 2 — OOT Far (Jan 14–18)": {
-        "file": "cfm_pltv_test2.csv",
-        "rows": "82k",
-        "dates": "2026-01-14 to 2026-01-18",
-        "description": "Further from training window — harder generalization test.",
-    },
-}
-
 
 # ---------------------------------------------------------------------------
 # Top Menu (called from every page)
@@ -290,82 +272,41 @@ def render_sidebar():
 
 
 # ---------------------------------------------------------------------------
-# Cached data loaders
+# Cached data loaders — all data flows through the Dataset Registry
 # ---------------------------------------------------------------------------
-@st.cache_data(show_spinner="Loading training data…")
-def load_data(max_rows: int = 50_000, file_mtime: float = 0.0) -> pd.DataFrame:
-    """Load training data (2025-12-16 to 2026-01-08). Excludes all test sets."""
-    import time
-    csv_path = DATA_DIR / "cfm_pltv_train.csv"
-    if not csv_path.exists():
-        raise FileNotFoundError(
-            f"Training data not found: {csv_path}. "
-            f"Please upload your dataset using the Data Upload page."
-        )
-    # Retry logic for Windows file locks (e.g. antivirus scanning after upload)
-    for attempt in range(5):
-        try:
-            return pd.read_csv(csv_path, nrows=max_rows, low_memory=False)
-        except PermissionError:
-            if attempt < 4:
-                time.sleep(2)
-            else:
-                raise PermissionError(
-                    f"Cannot read {csv_path.name} — file is locked by another process. "
-                    f"Please wait a moment (antivirus may be scanning) and refresh the page."
-                )
-
-
 def get_data() -> pd.DataFrame:
-    """Load data using current session settings.
-    Prefers the Dataset Registry binding; falls back to legacy cfm_pltv_train.csv."""
-    mr = st.session_state.get("max_rows", 50_000)
-
-    # Try Dataset Registry first
+    """Load data from the Dataset Registry (selected in sidebar).
+    Every page uses the dataset bound to it via the registry sidebar."""
     ds_id = st.session_state.get("current_dataset_id")
-    if ds_id:
-        from dataset_registry import load_dataset
-        try:
-            df = load_dataset(ds_id, max_rows=mr)
-            st.session_state["actual_row_count"] = len(df)
-            return df
-        except FileNotFoundError:
-            pass  # Fall through to legacy loader
+    if not ds_id:
+        st.error("No dataset selected. Please select a dataset from the **📚 Dataset Registry** in the sidebar.")
+        st.stop()
 
-    # Legacy fallback
-    csv_path = DATA_DIR / "cfm_pltv_train.csv"
-    mtime = os.path.getmtime(csv_path) if csv_path.exists() else 0.0
-    df = load_data(mr, file_mtime=mtime)
+    from dataset_registry import load_dataset
+    mr = st.session_state.get("max_rows", 0)
+    df = load_dataset(ds_id, max_rows=mr)
     st.session_state["actual_row_count"] = len(df)
     return df
 
 
-@st.cache_data(show_spinner="Loading test data…")
-def load_test(filename: str) -> pd.DataFrame:
-    """Load a test dataset by filename."""
-    csv_path = DATA_DIR / filename
-    if not csv_path.exists():
-        raise FileNotFoundError(
-            f"Test dataset not found: {csv_path}. "
-            f"Run utils/split_oot.py first."
-        )
-    return pd.read_csv(csv_path, low_memory=False)
+def get_registry_path() -> tuple:
+    """Return (csv_path_str, file_mtime) for the currently selected registry dataset.
+    Used by pages that pass path+mtime to cached compute functions."""
+    ds_id = st.session_state.get("current_dataset_id")
+    if not ds_id:
+        st.error("No dataset selected. Please select a dataset from the **📚 Dataset Registry** in the sidebar.")
+        st.stop()
 
+    from dataset_registry import list_datasets, DATA_DIR as DS_DATA_DIR
+    datasets = list_datasets()
+    if ds_id not in datasets:
+        st.error(f"Dataset `{ds_id}` not found in registry. Please select a valid dataset.")
+        st.stop()
 
-def load_test_1() -> pd.DataFrame:
-    """Test 1 — OOT Near: 2026-01-09 to 2026-01-13 (118k rows)."""
-    return load_test("cfm_pltv_test1.csv")
-
-
-def load_test_2() -> pd.DataFrame:
-    """Test 2 — OOT Far: 2026-01-14 to 2026-01-18 (82k rows)."""
-    return load_test("cfm_pltv_test2.csv")
-
-
-def get_test_data(choice: str) -> pd.DataFrame:
-    """Load a test dataset by user choice key."""
-    info = TEST_DATASETS[choice]
-    return load_test(info["file"])
+    meta = datasets[ds_id]
+    fpath = DS_DATA_DIR / meta["filename"]
+    mtime = os.path.getmtime(fpath) if fpath.exists() else 0.0
+    return str(fpath), mtime
 
 
 # ---------------------------------------------------------------------------
@@ -415,30 +356,6 @@ def get_currency_info() -> dict:
         "label": "VND" if currency == "VND" else "USD",
     }
 
-
-# ---------------------------------------------------------------------------
-# Dataset listing helpers for analysis pages
-# ---------------------------------------------------------------------------
-def list_analysis_datasets(default: str = "cfm_pltv_train") -> tuple:
-    """
-    Return (datasets_dict, default_idx) for analysis pages.
-    Excludes D135 part files (those are only for Real-Time Scoring).
-    Defaults to cfm_pltv_train.
-    """
-    datasets = {}
-    for f in sorted(DATA_DIR.glob("cfm_pltv*.csv")):
-        if "D135_part" in f.stem:
-            continue  # D135 parts are only for Real-Time Scoring
-        size_mb = f.stat().st_size / 1e6
-        datasets[f.stem] = {"path": str(f), "size_mb": size_mb, "mtime": f.stat().st_mtime}
-    names = list(datasets.keys())
-    if default in names:
-        idx = names.index(default)
-    elif names:
-        idx = 0
-    else:
-        idx = 0
-    return datasets, idx
 
 
 # ---------------------------------------------------------------------------

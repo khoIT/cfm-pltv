@@ -12,8 +12,8 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shared import (
-    render_sidebar, render_top_menu, render_report_md, convert_vnd, get_currency_info,
-    format_currency, DATA_DIR, REPORTS_DIR, list_analysis_datasets,
+    render_sidebar, render_top_menu, render_report_md, get_registry_path,
+    convert_vnd, get_currency_info, format_currency, REPORTS_DIR,
 )
 
 render_top_menu()
@@ -66,23 +66,9 @@ st.markdown(
 
 cur = get_currency_info()
 
-# ── Dataset selector ───────────────────────────────────────────────
-st.header("📂 Select Dataset")
-datasets, default_idx = list_analysis_datasets()
-if not datasets:
-    st.error("No datasets found in data/ directory.")
-    st.stop()
-
-ds_names = list(datasets.keys())
-col_ds1, col_ds2 = st.columns([2, 3])
-with col_ds1:
-    chosen_ds = st.selectbox("Dataset", ds_names, index=default_idx, key="cohort_dataset",
-                             help="Choose which dataset to analyze")
-with col_ds2:
-    ds_info = datasets[chosen_ds]
-    st.markdown(f"**{chosen_ds}** — {ds_info['size_mb']:.1f} MB")
-
-df_raw, metrics, error = compute_cohort_metrics(ds_info["path"], ds_info["mtime"])
+# Load from registry
+ds_path, ds_mtime = get_registry_path()
+df_raw, metrics, error = compute_cohort_metrics(ds_path, ds_mtime)
 if error:
     st.error(f"❌ {error}")
     st.stop()

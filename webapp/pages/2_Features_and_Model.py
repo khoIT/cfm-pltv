@@ -15,9 +15,9 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shared import (
-    render_sidebar, render_top_menu, get_data, get_test_data, format_currency, convert_vnd,
+    render_sidebar, render_top_menu, get_data, format_currency, convert_vnd,
     get_currency_info, REPORTS_DIR,
-    FEATURE_GROUPS, ALL_NUMERIC_FEATURES, ALL_CAT_FEATURES, TEST_DATASETS,
+    FEATURE_GROUPS, ALL_NUMERIC_FEATURES, ALL_CAT_FEATURES,
     get_selected_features, get_flat_selected_features,
 )
 from model_registry import save_model, load_model, show_model_management_ui

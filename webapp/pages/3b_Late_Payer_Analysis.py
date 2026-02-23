@@ -15,9 +15,9 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shared import (
-    render_sidebar, render_top_menu, get_data, get_test_data, convert_vnd, get_currency_info,
-    format_currency, REPORTS_DIR, DATA_DIR,
-    BASELINE_HEURISTICS, compute_baseline_ranking, TEST_DATASETS,
+    render_sidebar, render_top_menu, get_data, convert_vnd, get_currency_info,
+    format_currency, REPORTS_DIR,
+    BASELINE_HEURISTICS, compute_baseline_ranking,
 )
 
 render_top_menu()
@@ -49,21 +49,12 @@ def revenue_capture_at_k(y_true, order, k_pct):
     return top_rev / total if total > 0 else 0.0
 
 
-def list_available_datasets():
-    """List CSV files in the data directory."""
-    datasets = {}
-    for f in DATA_DIR.glob("cfm_pltv*.csv"):
-        size_mb = f.stat().st_size / 1e6
-        datasets[f.stem] = {"path": str(f), "size_mb": size_mb, "mtime": f.stat().st_mtime}
-    return datasets
-
-
-# ── page ───────────────────────────────────────────────────────────
+# ── page ─────────────────────────────────────────────────────────────────
 st.title("🔍 Late Payer Analysis (rev_d7 = 0)")
 
 if st.session_state.get("data_missing", False):
-    st.warning("⚠️ No training data found")
-    st.info("Please upload your dataset using the **📤 Data Upload** page.")
+    st.warning("⚠️ No dataset selected")
+    st.info("Please select a dataset from the **Dataset Registry** in the sidebar.")
     st.stop()
 
 cur = get_currency_info()
@@ -74,33 +65,9 @@ st.markdown(
     "the ML model adds by detecting these hidden future payers."
 )
 
-# =====================================================================
-# DATASET SELECTOR
-# =====================================================================
-st.header("📂 Select Dataset")
-datasets = list_available_datasets()
-
-if not datasets:
-    st.error("No datasets found in data/ directory.")
-    st.stop()
-
-ds_names = list(datasets.keys())
-default_idx = ds_names.index("cfm_pltv") if "cfm_pltv" in ds_names else 0
-
-col_ds1, col_ds2 = st.columns([2, 3])
-with col_ds1:
-    chosen_ds = st.selectbox(
-        "Dataset", ds_names, index=default_idx, key="lpa_dataset",
-        help="Choose which dataset to analyze"
-    )
-with col_ds2:
-    ds_info = datasets[chosen_ds]
-    st.markdown(f"**{chosen_ds}** — {ds_info['size_mb']:.1f} MB")
-
-# Load dataset
-ds_path = ds_info["path"]
-df_eval = pd.read_csv(ds_path, low_memory=False)
-st.success(f"✅ Loaded **{len(df_eval):,}** rows from {chosen_ds}")
+# Load dataset from registry
+df_eval = get_data()
+st.caption(f"Dataset: **{len(df_eval):,}** rows (from Dataset Registry)")
 
 # ── model predictions ─────────────────────────────────────────────
 use_live = "model" in st.session_state
@@ -165,8 +132,7 @@ with kpi4:
     avg_ltv_payers = y_true_seg[y_true_seg > 0].mean() if payers_in_seg > 0 else 0
     st.metric("Avg LTV30 (late payers)", format_currency(avg_ltv_payers, cur["code"]))
 
-st.caption(f"Evaluating on **{chosen_ds}** — **{n_zero:,}** users with rev_d7 = 0 "
-           f"(out of {n_all:,} total)")
+st.caption(f"**{n_zero:,}** users with rev_d7 = 0 (out of {n_all:,} total)")
 
 if n_zero < 100:
     st.error("Too few users in D7=0 segment for meaningful analysis.")

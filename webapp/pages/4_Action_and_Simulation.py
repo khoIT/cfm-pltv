@@ -13,18 +13,10 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from shared import (
-    render_sidebar, render_top_menu, get_data, get_test_data, format_currency, convert_vnd,
-    get_currency_info, REPORTS_DIR, DATA_DIR,
-    BASELINE_HEURISTICS, compute_baseline_ranking, TEST_DATASETS,
+    render_sidebar, render_top_menu, get_data, format_currency, convert_vnd,
+    get_currency_info, REPORTS_DIR,
+    BASELINE_HEURISTICS, compute_baseline_ranking,
 )
-
-def list_available_datasets():
-    """List CSV files in the data directory."""
-    datasets = {}
-    for f in DATA_DIR.glob("cfm_pltv*.csv"):
-        size_mb = f.stat().st_size / 1e6
-        datasets[f.stem] = {"path": str(f), "size_mb": size_mb, "mtime": f.stat().st_mtime}
-    return datasets
 
 
 render_top_menu()
@@ -33,45 +25,18 @@ render_sidebar()
 st.title("🎮 Action & Simulation")
 
 if st.session_state.get("data_missing", False):
-    st.warning("⚠️ No training data found")
-    st.info("Please upload your dataset using the **📤 Data Upload** page in the sidebar.")
+    st.warning("⚠️ No dataset selected")
+    st.info("Please select a dataset from the **Dataset Registry** in the sidebar.")
     st.stop()
-
-df = get_data()
-st.caption(f"Training data: **{len(df):,}** rows")
 
 report_path = REPORTS_DIR / "action_simulation.md"
 if report_path.exists():
     with st.expander("📄 Action Simulation Report", expanded=False):
         st.markdown(report_path.read_text(encoding="utf-8"))
 
-# ═════════════════════════════════════════════════════════════════════
-# DATASET SELECTOR
-# ═════════════════════════════════════════════════════════════════════
-st.header("📂 Select Dataset for Simulation")
-datasets = list_available_datasets()
-
-if not datasets:
-    st.error("No datasets found in data/ directory.")
-    st.stop()
-
-ds_names = list(datasets.keys())
-default_idx = ds_names.index("cfm_pltv") if "cfm_pltv" in ds_names else 0
-
-col_ds1, col_ds2 = st.columns([2, 3])
-with col_ds1:
-    chosen_ds = st.selectbox(
-        "Dataset", ds_names, index=default_idx, key="action_dataset",
-        help="Choose which dataset to simulate on"
-    )
-with col_ds2:
-    ds_info = datasets[chosen_ds]
-    st.markdown(f"**{chosen_ds}** — {ds_info['size_mb']:.1f} MB")
-
-# Load dataset
-ds_path = ds_info["path"]
-df_sim = pd.read_csv(ds_path, low_memory=False)
-st.success(f"✅ Loaded **{len(df_sim):,}** rows from {chosen_ds}")
+# Load dataset from registry
+df_sim = get_data()
+st.caption(f"Dataset: **{len(df_sim):,}** rows (from Dataset Registry)")
 
 # ── model predictions ─────────────────────────────────────────────
 if "model" in st.session_state:
