@@ -250,7 +250,6 @@ def render_sidebar():
         st.page_link("pages/3l_Skill_Spend_Correlation.py", label="🎯 Skill-to-Spend")
 
     # ── Currency selector ─────────────────────────────────────────
-    st.sidebar.markdown("---")
     currency = st.sidebar.selectbox(
         "💱 Currency",
         ["🇻🇳 VND (₫)", "💵 USD ($)"],

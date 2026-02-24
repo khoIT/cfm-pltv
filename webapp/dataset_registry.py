@@ -217,7 +217,6 @@ def render_dataset_sidebar(page_id: str):
     Shows all datasets, highlights the one bound to the current page,
     and allows the user to switch.
     """
-    st.sidebar.markdown("---")
     st.sidebar.markdown("### 📚 Dataset Registry")
 
     datasets = list_datasets()
