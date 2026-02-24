@@ -117,7 +117,7 @@ def render_top_menu():
         <style>
         .main .block-container,
         [data-testid="stMainBlockContainer"] {
-            max-width: 80% !important;
+            max-width: 90% !important;
             width: 100% !important;
             padding-left: 1rem !important;
             padding-right: 1rem !important;
@@ -215,8 +215,8 @@ def render_sidebar():
     }
     is_ai_page = current_page in ai_pages
     
-    # ── Section A: Key Functions ──────────────────────────────────────
-    st.sidebar.markdown('<h3 style="font-size: 18px;">🔧 Key Functions</h3>', unsafe_allow_html=True)
+    # ── Section A: CFM Data Chatbot + Utilities ─────────────────────
+    st.sidebar.page_link("pages/CFM_Chatbot.py", label="🤖 CFM Data Chatbot")
     st.sidebar.page_link("pages/0_Data_Upload.py", label="📤 Data Upload")
     st.sidebar.page_link("pages/7_Notebooks.py", label="📓 Notebooks")
     
