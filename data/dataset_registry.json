@@ -45,6 +45,51 @@
       "maturity_cutoff": "2026-01-23",
       "maturity_days": 30,
       "pct_of_total": 20.4
+    },
+    "cfm_pltv_train_1": {
+      "name": "cfm_pltv_train",
+      "filename": "cfm_pltv_train.csv",
+      "rows": 1684268,
+      "columns": 37,
+      "source_file": "cfm_pltv_2025_12_16.csv",
+      "split_info": "Mature users (install \u2264 2026-01-22), 80% split",
+      "created_at": "2026-02-25T11:54:20.843411",
+      "size_mb": 338.9,
+      "role": "train",
+      "dump_date": "2026-02-21",
+      "maturity_cutoff": "2026-01-22",
+      "maturity_days": 30,
+      "pct_of_total": 64.2
+    },
+    "cfm_pltv_test_1": {
+      "name": "cfm_pltv_test",
+      "filename": "cfm_pltv_test.csv",
+      "rows": 421068,
+      "columns": 37,
+      "source_file": "cfm_pltv_2025_12_16.csv",
+      "split_info": "Mature users (install \u2264 2026-01-22), 20% holdout",
+      "created_at": "2026-02-25T11:54:24.012734",
+      "size_mb": 84.8,
+      "role": "test",
+      "dump_date": "2026-02-21",
+      "maturity_cutoff": "2026-01-22",
+      "maturity_days": 30,
+      "pct_of_total": 16.0
+    },
+    "cfm_pltv_recent_1": {
+      "name": "cfm_pltv_recent",
+      "filename": "cfm_pltv_recent.csv",
+      "rows": 518713,
+      "columns": 37,
+      "source_file": "cfm_pltv_2025_12_16.csv",
+      "split_info": "Recent users (install > 2026-01-22), LTV30 not realized",
+      "created_at": "2026-02-25T11:54:27.521390",
+      "size_mb": 94.8,
+      "role": "recent",
+      "dump_date": "2026-02-21",
+      "maturity_cutoff": "2026-01-22",
+      "maturity_days": 30,
+      "pct_of_total": 19.8
     }
   },
   "page_bindings": {

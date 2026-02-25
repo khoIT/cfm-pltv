@@ -26,6 +26,19 @@ from shared import (
     convert_vnd,
     FEATURE_GROUPS,
 )
+from utils.analytics_modules import (
+    detect_deterministic_flow,
+    run_pareto_analysis,
+    run_late_payer_analysis,
+    run_channel_dashboard,
+    run_cohort_tracker,
+    run_feature_importance,
+    run_executive_brief,
+    run_anomaly_detection,
+    run_data_quality,
+    get_follow_up_suggestions,
+    render_follow_ups,
+)
 
 # ---------------------------------------------------------------------------
 # Page layout
@@ -38,7 +51,22 @@ render_sidebar()
 # ---------------------------------------------------------------------------
 DATA_DIR = ROOT / "data"
 MODELS_DIR = ROOT / "models"
-CSV_PATH = DATA_DIR / "cfm_pltv_Feb22.csv"
+
+# Auto-detect the main data CSV (the old hardcoded name may not exist)
+def _find_csv():
+    candidates = [
+        DATA_DIR / "cfm_pltv_Feb22.csv",
+        DATA_DIR / "cfm_pltv_train.csv",
+        DATA_DIR / "cfm_pltv_2025_12_16.csv",
+    ]
+    for c in candidates:
+        if c.exists():
+            return c
+    # Fallback: first cfm_pltv*.csv found
+    globbed = sorted(DATA_DIR.glob("cfm_pltv*.csv"))
+    return globbed[0] if globbed else candidates[0]
+
+CSV_PATH = _find_csv()
 
 CFM_KEYWORDS = {
     "ltv", "pltv", "payer", "whale", "arpu", "arppu", "roas", "revenue",
@@ -74,7 +102,7 @@ SYSTEM_PROMPT = textwrap.dedent(f"""\
 You are the CFM Analytics Assistant for CrossFire Mobile Vietnam.
 Your PRIMARY job is to deliver clear, actionable INSIGHTS and DATA STORIES to the user.
 
-DATASET: cfm_pltv_Feb22.csv (DuckDB table alias: cfm_features) — 2,624,049 rows, 37 columns.
+DATASET: {CSV_PATH.name} (DuckDB table alias: cfm_features) — 37 columns.
 PERIOD: Dec 16, 2025 → Feb 21, 2026. Country: Vietnam (VN). Currency: VND (₫). 1 USD ≈ ₫24,000.
 
 KEY FACTS:
@@ -275,9 +303,11 @@ def run_pltv_inference(model_name: str, max_rows: int = 50000) -> tuple[Optional
             X[c] = 0
     for c in cat_feats:
         if c in df.columns:
-            X[c] = df[c].fillna("unknown").astype("category")
+            from sklearn.preprocessing import LabelEncoder
+            le = LabelEncoder()
+            X[c] = le.fit_transform(df[c].fillna("unknown").astype(str))
         else:
-            X[c] = pd.Categorical(["unknown"] * len(df))
+            X[c] = 0
 
     try:
         df["pltv_score"] = model.predict(X)
@@ -439,6 +469,20 @@ def build_echarts_option(df: pd.DataFrame, spec: dict) -> Optional[dict]:
             base_option["series"] = [{"type": "heatmap", "data": heat_data}]
             return base_option
 
+        if chart_type == "radar":
+            # Radar chart: x = category labels, y = values
+            indicators = [{"name": str(v), "max": float(df[y].max()) * 1.2}
+                          for v in df[x].tolist()]
+            radar_data = [float(v) if pd.notna(v) else 0 for v in df[y]]
+            base_option.pop("grid", None)
+            base_option["radar"] = {"indicator": indicators, "shape": "polygon"}
+            base_option["series"] = [{
+                "type": "radar",
+                "data": [{"value": radar_data, "name": y}],
+                "areaStyle": {"opacity": 0.2},
+            }]
+            return base_option
+
         if chart_type == "boxplot":
             # Simple boxplot from y values grouped by x
             base_option["xAxis"] = {"type": "category", "data": list(df[x].unique().astype(str))}
@@ -508,7 +552,7 @@ def auto_generate_charts(df: pd.DataFrame) -> list[dict]:
 # Render an artifact (dataframe + ECharts + exports)
 # ---------------------------------------------------------------------------
 def render_artifact(df: Optional[pd.DataFrame], charts: list[dict], key_suffix: str = ""):
-    """Render dataframe, multiple ECharts, and export buttons."""
+    """Render dataframe, multiple ECharts, export buttons, and chart editor."""
     if df is not None and not df.empty:
         st.dataframe(df.head(200), use_container_width=True)
 
@@ -521,6 +565,25 @@ def render_artifact(df: Optional[pd.DataFrame], charts: list[dict], key_suffix: 
         # Render all charts
         if charts:
             render_echarts(df, charts, key_suffix=key_suffix)
+
+            # Chart editor / canvas mode
+            with st.expander("✏️ Edit Charts (Canvas Mode)", expanded=False):
+                chart_json = json.dumps(charts, indent=2)
+                edited = st.text_area(
+                    "Modify chart specs (JSON array) and click Re-render:",
+                    value=chart_json, height=180,
+                    key=f"canvas_{key_suffix}",
+                )
+                if st.button("🔄 Re-render", key=f"rerender_{key_suffix}"):
+                    try:
+                        new_specs = json.loads(edited)
+                        if isinstance(new_specs, list):
+                            render_echarts(df, new_specs, key_suffix=f"{key_suffix}_edited")
+                            st.success("Charts re-rendered with your edits.")
+                        else:
+                            st.error("Must be a JSON array of chart specs.")
+                    except json.JSONDecodeError as je:
+                        st.error(f"Invalid JSON: {je}")
 
 
 # ---------------------------------------------------------------------------
@@ -544,14 +607,49 @@ def call_llm(messages: list[dict], stream: bool = True):
 # ---------------------------------------------------------------------------
 # Main message handler
 # ---------------------------------------------------------------------------
+def _run_deterministic_flow(flow: str, user_input: str) -> tuple[str, list[str]]:
+    """Dispatch to the appropriate deterministic analytics module.
+    Returns (summary_text, follow_up_suggestions)."""
+    dispatch = {
+        "pareto": lambda: run_pareto_analysis(execute_sql),
+        "late_payer": lambda: run_late_payer_analysis(execute_sql),
+        "channel": lambda: run_channel_dashboard(execute_sql),
+        "cohort": lambda: run_cohort_tracker(execute_sql),
+        "feature_importance": lambda: run_feature_importance(execute_sql, MODELS_DIR),
+        "executive_brief": lambda: run_executive_brief(execute_sql),
+        "anomaly": lambda: run_anomaly_detection(execute_sql),
+        "data_quality": lambda: run_data_quality(execute_sql),
+    }
+    handler = dispatch.get(flow)
+    if handler:
+        return handler()
+    return "Unknown flow.", []
+
+
 def handle_message(user_input: str):
-    """Process a user message through the full chatbot pipeline."""
+    """Process a user message through the full chatbot pipeline.
+    Priority: deterministic flow → LLM-based response."""
     # Add user message to history
     st.session_state.messages.append({"role": "user", "content": user_input})
 
     mode = classify_intent(user_input)
     st.session_state.chat_mode = mode
 
+    # ── Step 1: Check for deterministic analytics flow ──────────
+    flow = detect_deterministic_flow(user_input)
+    if flow and mode == "cfm":
+        try:
+            with st.chat_message("assistant"):
+                summary, follow_ups = _run_deterministic_flow(flow, user_input)
+
+            st.session_state.messages.append({"role": "assistant", "content": summary})
+            st.session_state.last_follow_ups = follow_ups
+            return
+        except Exception as e:
+            # If deterministic flow fails, fall through to LLM
+            st.warning(f"Analytics module error: {e} — falling back to LLM.")
+
+    # ── Step 2: LLM-based response ─────────────────────────────
     # Check for pLTV scoring intent
     pltv_keywords = {"score", "predict", "pltv", "inference", "model score"}
     is_pltv_request = any(kw in user_input.lower() for kw in pltv_keywords)
@@ -684,6 +782,8 @@ def handle_message(user_input: str):
 
         # Save assistant message
         st.session_state.messages.append({"role": "assistant", "content": full_response})
+        # Store follow-ups for persistent rendering after rerun
+        st.session_state.last_follow_ups = get_follow_up_suggestions(user_input)
 
     except ValueError as e:
         with st.chat_message("assistant"):
@@ -762,24 +862,41 @@ def render_chatbot_sidebar():
         # Schema viewer
         st.markdown("**📋 Dataset Schema**")
         st.code(COLUMN_SCHEMA, language="text")
-        st.caption(f"Source: `{CSV_PATH.name}` — 2,624,049 rows × 37 cols")
+        st.caption(f"Source: `{CSV_PATH.name}` — 37 columns")
 
     # Clear chat — keep outside expander for quick access
     if st.sidebar.button("🗑️ Clear chat", key="clear_chat_btn"):
         st.session_state.messages = []
         st.rerun()
 
+    # Session export
+    if st.session_state.get("messages"):
+        export_lines = []
+        for msg in st.session_state.messages:
+            role = "**User**" if msg["role"] == "user" else "**Assistant**"
+            export_lines.append(f"### {role}\n\n{msg['content']}\n")
+        export_md = "# CFM Chatbot — Session Export\n\n" + "\n---\n\n".join(export_lines)
+        st.sidebar.download_button(
+            "📥 Export conversation",
+            export_md, "cfm_chatbot_session.md", "text/markdown",
+            key="session_export_btn",
+        )
+
 
 # ---------------------------------------------------------------------------
 # Starter question pills
 # ---------------------------------------------------------------------------
 STARTER_QUESTIONS = [
-    ("📊", "What is the payer rate and ARPU by media source?"),
-    ("🐋", "Show me the whale concentration — top 1% vs rest"),
-    ("⏱️", "How does D7 revenue compare to D30 revenue across cohorts?"),
-    ("🔍", "Who are the late payers and what behavioral signals predict them?"),
-    ("🎯", "Score all users with the pLTV model and show the top 1% predicted"),
-    ("📉", "Which channels have declining cohort quality over time?"),
+    ("�", "Give me the executive brief — key metrics overview"),
+    ("�", "Show the Pareto concentration — top 1% revenue share"),
+    ("💰", "Show me the late payer opportunity — how much revenue are we missing?"),
+    ("📡", "Channel performance dashboard — compare all channels"),
+    ("�", "Show cohort quality trends — is user quality declining?"),
+    ("🧠", "Explain the model's feature importance"),
+    ("🐋", "Show me whale concentration — top 1% vs rest"),
+    ("🔍", "Detect anomalies and outliers in the data"),
+    ("🎯", "Score all users with the pLTV model and show top 1%"),
+    ("📉", "What is the data quality and coverage status?"),
     ("🌱", "Compare seed strategies: D7-payers-only vs enriched with late payers"),
     ("💡", "What does the causal inference analysis say about engagement driving conversion?"),
 ]
@@ -826,8 +943,9 @@ def main():
 
     # Page header
     st.title("🤖 CFM Data Chatbot")
-    st.caption("Ask questions about CrossFire Mobile pLTV data, whales, channels, revenue, and more. "
-               "Answers are grounded in `cfm_pltv_Feb22.csv` (2.6M users) and 23 analysis reports.")
+    st.caption(f"Ask questions about CrossFire Mobile pLTV data, whales, channels, revenue, and more. "
+               f"Answers are grounded in `{CSV_PATH.name}` and 23 analysis reports. "
+               f"Try the ⚡ instant analytics modules for Pareto, channels, late-payers, cohorts, and more.")
 
     # Check API key
     provider = st.session_state.get("llm_provider", "openai")
@@ -920,7 +1038,12 @@ def main():
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    # Handle pending question from starter pills
+    # Render follow-up suggestions persistently after the last assistant message
+    last_follow_ups = st.session_state.get("last_follow_ups", [])
+    if last_follow_ups and st.session_state.messages and st.session_state.messages[-1]["role"] == "assistant":
+        render_follow_ups(last_follow_ups, key_prefix="persist_followup")
+
+    # Handle pending question from follow-up buttons or starter pills
     pending = st.session_state.pop("pending_question", None)
 
     # Chat input
@@ -930,9 +1053,11 @@ def main():
         user_input = pending
 
     if user_input:
+        st.session_state.last_follow_ups = []  # clear while processing
         with st.chat_message("user"):
             st.markdown(user_input)
         handle_message(user_input)
+        st.rerun()  # rerun so follow-up suggestions render immediately
 
 
 main()

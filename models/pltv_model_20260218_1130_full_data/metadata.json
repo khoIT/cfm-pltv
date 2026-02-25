@@ -35,19 +35,19 @@
     "media_source"
   ],
   "feature_importances": {
-    "rev_d7": 0.949443,
-    "max_level_seen_d7": 0.032895,
-    "kd_d7": 0.003934,
-    "active_days_d7": 0.003812,
-    "login_rows_d7": 0.002005,
-    "max_ladderscore_d7": 0.001738,
-    "win_rate_d7": 0.001492,
-    "deaths_d7": 0.001458,
-    "games_d7": 0.001265,
-    "media_source": 0.001014,
-    "kills_d7": 0.000881,
-    "first_charge_day_offset_d7": 3.5e-05,
-    "txn_cnt_d7": 2.7e-05
+    "rev_d7": 0.9726390838623047,
+    "txn_cnt_d7": 0.0,
+    "first_charge_day_offset_d7": 0.0,
+    "games_d7": 0.0022709073964506388,
+    "win_rate_d7": 0.0006729309679940343,
+    "kills_d7": 0.00040375045500695705,
+    "deaths_d7": 0.0010849161772057414,
+    "kd_d7": 0.0022631268948316574,
+    "login_rows_d7": 0.0008052675984799862,
+    "active_days_d7": 0.0014077352825552225,
+    "max_level_seen_d7": 0.01747620292007923,
+    "max_ladderscore_d7": 0.0005969842313788831,
+    "media_source": 0.000379144650651142
   },
   "hyperparameters": {
     "n_estimators": 200,
@@ -58,5 +58,6 @@
   "training_date": "2026-02-18",
   "training_time": "11:35:40",
   "saved_at": "2026-02-18T11:36:10.864663",
-  "model_name": "pltv_model_20260218_1130_full_data"
+  "model_name": "pltv_model_20260218_1130_full_data",
+  "xgboost_version": "2.1.4"
 }

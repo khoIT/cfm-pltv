@@ -37,20 +37,20 @@
     "media_source"
   ],
   "feature_importances": {
-    "rev_d7": 0.948642,
-    "max_level_game_d7": 0.034062,
-    "active_days_d7": 0.003556,
-    "kills_d7": 0.00249,
-    "deaths_d7": 0.002444,
-    "login_rows_d7": 0.002311,
-    "games_d7": 0.001536,
-    "win_rate_d7": 0.001359,
-    "max_ladderlevel_d7": 0.001324,
-    "avg_game_duration_d7": 0.001257,
-    "media_source": 0.000975,
-    "first_charge_day_offset_d7": 2.9e-05,
-    "txn_cnt_d7": 1.5e-05,
-    "loginchannel_variety_d7": 0.0
+    "rev_d7": 0.9638106822967529,
+    "txn_cnt_d7": 0.0,
+    "first_charge_day_offset_d7": 0.0,
+    "games_d7": 0.0023019639775156975,
+    "win_rate_d7": 0.0006410097703337669,
+    "avg_game_duration_d7": 0.0009786696173250675,
+    "kills_d7": 0.001125488430261612,
+    "deaths_d7": 0.0014009271981194615,
+    "max_level_game_d7": 0.024969028308987617,
+    "max_ladderlevel_d7": 0.0009062913013622165,
+    "login_rows_d7": 0.001093558850698173,
+    "active_days_d7": 0.0023362450301647186,
+    "loginchannel_variety_d7": 0.0,
+    "media_source": 0.0004361143510323018
   },
   "hyperparameters": {
     "n_estimators": 200,
@@ -61,5 +61,6 @@
   "training_date": "2026-02-23",
   "training_time": "11:11:36",
   "saved_at": "2026-02-23T11:12:18.690115",
-  "model_name": "pltv_model_20260223_14_16Mrows"
+  "model_name": "pltv_model_20260223_14_16Mrows",
+  "xgboost_version": "2.1.4"
 }

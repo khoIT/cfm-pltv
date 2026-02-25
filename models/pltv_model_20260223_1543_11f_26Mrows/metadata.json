@@ -31,16 +31,16 @@
     "first_country_code"
   ],
   "feature_importances": {
-    "rev_d7": 0.958153,
-    "max_level_seen_d7": 0.031134,
-    "kd_d7": 0.00359,
-    "active_days_d7": 0.002523,
-    "win_rate_d7": 0.001261,
-    "media_source": 0.000933,
-    "games_d7": 0.000897,
-    "avg_score_d7": 0.000854,
-    "kills_d7": 0.000628,
-    "first_charge_day_offset_d7": 2.9e-05,
+    "rev_d7": 0.9741644859313965,
+    "first_charge_day_offset_d7": 0.0,
+    "games_d7": 0.0019905068911612034,
+    "win_rate_d7": 0.00048139263526536524,
+    "avg_score_d7": 0.00047579113743267953,
+    "kills_d7": 0.0003907103673554957,
+    "kd_d7": 0.0021486759651452303,
+    "active_days_d7": 0.0009710137965157628,
+    "max_level_seen_d7": 0.019016599282622337,
+    "media_source": 0.0003607623220887035,
     "first_country_code": 0.0
   },
   "hyperparameters": {
@@ -52,5 +52,6 @@
   "training_date": "2026-02-23",
   "training_time": "15:43:34",
   "saved_at": "2026-02-23T15:44:29.686689",
-  "model_name": "pltv_model_20260223_1543_11f_26Mrows"
+  "model_name": "pltv_model_20260223_1543_11f_26Mrows",
+  "xgboost_version": "2.1.4"
 }

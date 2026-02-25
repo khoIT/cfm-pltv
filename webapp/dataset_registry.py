@@ -11,6 +11,7 @@ import os
 import time
 from pathlib import Path
 from datetime import datetime
+from typing import Optional
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
@@ -146,7 +147,7 @@ def list_datasets() -> dict:
 
 
 # ── Page bindings ──────────────────────────────────────────────────
-def get_page_dataset(page_id: str) -> str | None:
+def get_page_dataset(page_id: str) -> Optional[str]:
     """Get the dataset ID bound to a page.
     Falls back to registry default_dataset, then cfm_pltv_train, then first available."""
     reg = get_registry()
@@ -202,7 +203,7 @@ def load_dataset(ds_id: str, max_rows: int = 0) -> pd.DataFrame:
     return _load_csv(str(fpath), max_rows=max_rows, file_mtime=mtime)
 
 
-def load_page_data(page_id: str, max_rows: int = 0) -> pd.DataFrame | None:
+def load_page_data(page_id: str, max_rows: int = 0) -> Optional[pd.DataFrame]:
     """Load the dataset bound to a page. Returns None if no binding."""
     ds_id = get_page_dataset(page_id)
     if ds_id is None:
